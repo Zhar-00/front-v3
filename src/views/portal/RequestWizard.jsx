@@ -1,0 +1,452 @@
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { api } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
+import icon from 'leaflet/dist/images/marker-icon.png';
+import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+
+let DefaultIcon = L.icon({
+    iconUrl: icon,
+    shadowUrl: iconShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41]
+});
+L.Marker.prototype.options.icon = DefaultIcon;
+
+const LocationPicker = ({ coordinates, setCoordinates }) => {
+  useMapEvents({
+    click(e) {
+      setCoordinates({ lat: e.latlng.lat, lng: e.latlng.lng });
+    },
+  });
+  return coordinates ? <Marker position={[coordinates.lat, coordinates.lng]} /> : null;
+};
+
+import { 
+  Zap, 
+  Lightbulb, 
+  Settings, 
+  Flame, 
+  FileText, 
+  Camera, 
+  MapPin, 
+  Calendar, 
+  ArrowLeft, 
+  ArrowRight, 
+  CheckCircle2, 
+  AlertTriangle,
+  Locate,
+  Image as ImageIcon
+} from 'lucide-react';
+
+const RequestWizard = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  const [step, setStep] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Estados del Formulario Consolidados
+  const [incidentType, setIncidentType] = useState('');
+  const [description, setDescription] = useState('');
+  const [notasDisponibilidad, setNotasDisponibilidad] = useState('');
+  const [address, setAddress] = useState(user?.address || '');
+  const [coordinates, setCoordinates] = useState({ lat: -12.1221, lng: -77.0305 }); // Ubicación Lima por defecto
+  const [isEmergency, setIsEmergency] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [scheduledTime, setScheduledTime] = useState('10:00');
+
+  // Tipos de Incidencias con Iconos
+  const INCIDENT_TYPES = [
+    { id: 'cortocircuito', label: 'Cortocircuito o Apagón', icon: Flame, desc: 'Chispas, olor a quemado, pérdida total o parcial de energía.', color: 'text-rose-500 bg-rose-50 border-rose-100' },
+    { id: 'sobrecarga', label: 'Sobrecarga térmica', icon: AlertTriangle, desc: 'Las llaves térmicas caen constantemente al conectar artefactos.', color: 'text-amber-500 bg-amber-50 border-amber-100' },
+    { id: 'instalacion', label: 'Instalación y Cableado', icon: Settings, desc: 'Nuevos puntos eléctricos, llaves diferenciales o cableado estructurado.', color: 'text-indigo-500 bg-indigo-50 border-indigo-100' },
+    { id: 'luminaria', label: 'Iluminación y Focos', icon: Lightbulb, desc: 'Flickering, fallas de dicroicos, reflectores o instalación de lámparas.', color: 'text-yellow-500 bg-yellow-50 border-yellow-100' },
+    { id: 'otros', label: 'Otros problemas', icon: Zap, desc: 'Problemas de puesta a tierra, intercomunicadores u otras fallas.', color: 'text-slate-500 bg-slate-50 border-slate-100' }
+  ];
+
+  // Notas predefinidas
+  const handleQuickNote = (note) => {
+    setNotasDisponibilidad(prev => prev ? `${prev}, ${note}` : note);
+  };
+
+  // Geolocalización usando API nativa
+  const handleGetLocation = () => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setCoordinates({ lat: position.coords.latitude, lng: position.coords.longitude });
+          setAddress(`Coordenadas: ${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)}`);
+        },
+        (error) => {
+          console.error("Error obteniendo ubicación:", error);
+          alert("No se pudo obtener la ubicación. Verifique los permisos.");
+        }
+      );
+    } else {
+      alert("Geolocalización no soportada por el navegador.");
+    }
+  };
+
+
+  const handleNext = () => {
+    if (step === 1 && !incidentType) {
+      alert('Por favor seleccione un tipo de incidencia.');
+      return;
+    }
+    if (step === 3 && !address.trim()) {
+      alert('Por favor ingrese su dirección.');
+      return;
+    }
+    if (step === 4) {
+      if (!isEmergency && (!scheduledDate || !scheduledTime)) {
+        alert('Por favor ingrese la fecha y rango horario para programar la visita.');
+        return;
+      }
+    }
+    setStep(prev => prev + 1);
+  };
+
+  const handleBack = () => {
+    setStep(prev => prev - 1);
+  };
+
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    try {
+      const result = await api.requests.create({
+        type: INCIDENT_TYPES.find(i => i.id === incidentType)?.label || 'Avería Eléctrica',
+        description,
+        notasDisponibilidad,
+        address,
+        coordinates,
+        isEmergency,
+        scheduledDate,
+        scheduledTime
+      });
+      navigate(`/tracking/${result.id}`);
+    } catch (err) {
+      alert(err.message || 'Error al procesar la solicitud.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const progressPercentage = (step / 4) * 100;
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6 text-left font-sans">
+      
+      {/* Cabecera Wizard */}
+      <div className="flex items-center space-x-4">
+        <button
+          onClick={() => step > 1 ? handleBack() : navigate('/dashboard')}
+          className="p-2 bg-white border border-slate-200/60 text-slate-500 hover:text-slate-800 rounded-xl shadow-soft-sm transition-soft cursor-pointer"
+        >
+          <ArrowLeft className="w-4 h-4" />
+        </button>
+        <div>
+          <h1 className="font-display font-extrabold text-xl md:text-2xl text-slate-900">
+            Nueva Solicitud de Asistencia
+          </h1>
+          <p className="text-xs text-slate-400">Paso {step} de 4: {
+            step === 1 ? 'Tipo de Incidencia' :
+            step === 2 ? 'Detalles y Notas' :
+            step === 3 ? 'Ubicación' : 'Planificación de Visita'
+          }</p>
+        </div>
+      </div>
+
+      {/* Progress Bar */}
+      <div className="w-full bg-slate-200/70 h-1.5 rounded-full overflow-hidden">
+        <div 
+          className="bg-indigo-600 h-full transition-soft rounded-full" 
+          style={{ width: `${progressPercentage}%` }}
+        ></div>
+      </div>
+
+      {/* CARD CONTENEDORA PRINCIPAL */}
+      <div className="bg-white/80 backdrop-blur-xl border border-white/60 rounded-3xl p-6 md:p-8 shadow-soft-lg animate-fade-in relative z-10">
+        
+        {/* STEP 1: SELECCIÓN DE INCIDENCIA */}
+        {step === 1 && (
+          <div className="space-y-6 animate-slide-up">
+            <div className="space-y-1">
+              <h2 className="font-display font-bold text-lg text-slate-900">¿Qué tipo de problema experimenta?</h2>
+              <p className="text-xs text-slate-400">Seleccione la categoría de avería eléctrica para acelerar el diagnóstico del especialista.</p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3.5">
+              {INCIDENT_TYPES.map((item) => {
+                const isSelected = incidentType === item.id;
+                const IconComponent = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setIncidentType(item.id)}
+                    className={`w-full p-4 rounded-2xl border text-left flex items-start space-x-4 transition-soft cursor-pointer ${
+                      isSelected 
+                        ? 'border-indigo-500 bg-indigo-50/20 shadow-soft-sm ring-1 ring-indigo-500/20' 
+                        : 'border-slate-100 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-200'
+                    }`}
+                  >
+                    <div className={`p-3 rounded-xl shrink-0 ${item.color}`}>
+                      <IconComponent className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-bold text-slate-800 text-sm">{item.label}</h4>
+                      <p className="text-xs text-slate-400 leading-normal mt-0.5">{item.desc}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* STEP 2: DETALLE Y NOTAS DE DISPONIBILIDAD */}
+        {step === 2 && (
+          <div className="space-y-6 animate-slide-up">
+            <div className="space-y-1">
+              <h2 className="font-display font-bold text-lg text-slate-900">Detalles del problema</h2>
+              <p className="text-xs text-slate-400">Describe brevemente qué ocurrió y agrega notas sobre tu disponibilidad.</p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-600">Descripción detallada</label>
+                <div className="relative">
+                  <textarea
+                    rows={4}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Describa los síntomas (Ej. Las luces del pasadizo parpadean, la llave del enchufe general no se sostiene al levantarla, hay olor a quemado cerca al tablero general...)"
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:border-indigo-500 focus:bg-white transition-soft resize-none"
+                  />
+                </div>
+              </div>
+
+              {/* Notas de Disponibilidad */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-slate-600">Notas de Disponibilidad (Opcional)</label>
+                <textarea
+                  rows={2}
+                  value={notasDisponibilidad}
+                  onChange={(e) => setNotasDisponibilidad(e.target.value)}
+                  placeholder="Ej: Solo disponible en las mañanas, tocar el timbre fuerte, dejar aviso en portería..."
+                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:border-indigo-500 focus:bg-white transition-soft resize-none"
+                />
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button type="button" onClick={() => handleQuickNote('Solo por las mañanas')} className="px-2 py-1 text-[10px] bg-slate-100 hover:bg-indigo-50 text-slate-600 rounded-lg cursor-pointer transition-soft">Solo por las mañanas</button>
+                  <button type="button" onClick={() => handleQuickNote('Llamar antes de venir')} className="px-2 py-1 text-[10px] bg-slate-100 hover:bg-indigo-50 text-slate-600 rounded-lg cursor-pointer transition-soft">Llamar antes de venir</button>
+                  <button type="button" onClick={() => handleQuickNote('Dejar en recepción')} className="px-2 py-1 text-[10px] bg-slate-100 hover:bg-indigo-50 text-slate-600 rounded-lg cursor-pointer transition-soft">Avisar en recepción</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: GEOLOCALIZACIÓN */}
+        {step === 3 && (
+          <div className="space-y-6 animate-slide-up">
+            <div className="space-y-1">
+              <h2 className="font-display font-bold text-lg text-slate-900">Ubicación del Servicio</h2>
+              <p className="text-xs text-slate-400">Ingrese la dirección exacta y ajuste el pin de mapa para orientar al técnico.</p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-600">Dirección</label>
+                <div className="flex space-x-2">
+                  <div className="relative flex-1">
+                    <MapPin className="absolute left-3 top-[50%] -translate-y-[50%] w-4.5 h-4.5 text-slate-400" />
+                    <input
+                      type="text"
+                      required
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="Dirección, Distrito y Referencia"
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:border-indigo-500 focus:bg-white transition-soft"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleGetLocation}
+                    className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl transition-soft cursor-pointer flex items-center justify-center shrink-0 shadow-soft-sm"
+                    title="Obtener ubicación actual"
+                  >
+                    <Locate className="w-5 h-5 text-indigo-500" />
+                  </button>
+                </div>
+              </div>
+
+              {/* MAP SIMULATOR */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-600">Mapa de geolocalización</label>
+                  <span className="text-[10px] text-slate-400 font-mono">Coords: {coordinates.lat.toFixed(5)}, {coordinates.lng.toFixed(5)}</span>
+                </div>
+
+                <div className="w-full h-48 bg-slate-100 border border-slate-200 rounded-2xl overflow-hidden relative shadow-inner z-0">
+                  <MapContainer 
+                    center={[coordinates.lat, coordinates.lng]} 
+                    zoom={15} 
+                    style={{ height: '100%', width: '100%' }}
+                  >
+                    <TileLayer
+                      attribution='&copy; OpenStreetMap'
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    />
+                    <LocationPicker coordinates={coordinates} setCoordinates={setCoordinates} />
+                  </MapContainer>
+                  
+                  {/* Floating map hint label */}
+                  <div className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm border border-slate-100 rounded-lg px-2.5 py-1 text-[9px] font-semibold text-slate-600 shadow-soft z-[1000] pointer-events-none">
+                    Haz click en cualquier punto para mover el Pin
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 4: PLANIFICACIÓN */}
+        {step === 4 && (
+          <div className="space-y-6 animate-slide-up">
+            <div className="space-y-1">
+              <h2 className="font-display font-bold text-lg text-slate-900">Programación e Importancia</h2>
+              <p className="text-xs text-slate-400">Configure la prioridad de atención para calcular tarifas y organizar los recorridos de cuadrilla.</p>
+            </div>
+
+            <div className="space-y-6">
+              {/* Toggle Emergencia */}
+              <div className={`p-5 rounded-2xl border transition-soft ${
+                isEmergency 
+                  ? 'bg-red-50/30 border-red-200/80 shadow-soft-sm' 
+                  : 'bg-slate-50 border-slate-100'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-start space-x-3 text-left">
+                    <AlertTriangle className={`w-5 h-5 shrink-0 mt-0.5 ${isEmergency ? 'text-red-500' : 'text-slate-400'}`} />
+                    <div>
+                      <h4 className="font-bold text-slate-800 text-sm">¿Es una Emergencia Inmediata?</h4>
+                      <p className="text-xs text-slate-400 mt-0.5 leading-normal">
+                        Asignación prioritaria para problemas de alta peligrosidad. Tiempo estimado de arribo: 15-30 minutos. Aplica cargo adicional.
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Stylized Toggle Switch */}
+                  <button
+                    type="button"
+                    onClick={() => setIsEmergency(!isEmergency)}
+                    className={`w-12 h-6.5 rounded-full p-1 transition-soft cursor-pointer flex items-center ${
+                      isEmergency ? 'bg-red-500 justify-end' : 'bg-slate-300 justify-start'
+                    }`}
+                  >
+                    <div className="w-4.5 h-4.5 bg-white rounded-full shadow-soft"></div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Selector de horario si NO es emergencia */}
+              {!isEmergency ? (
+                <div className="space-y-4 pt-2">
+                  <h4 className="font-bold text-xs text-slate-700 uppercase tracking-wider">Programar Fecha de Visita</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600">Fecha</label>
+                      <div className="relative">
+                        <Calendar className="absolute left-3 top-[50%] -translate-y-[50%] w-4.5 h-4.5 text-slate-400" />
+                        <input
+                          type="date"
+                          required
+                          value={scheduledDate}
+                          onChange={(e) => setScheduledDate(e.target.value)}
+                          min={new Date().toISOString().split('T')[0]}
+                          className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:border-indigo-500 focus:bg-white transition-soft"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600">Rango Horario</label>
+                      <select
+                        value={scheduledTime}
+                        onChange={(e) => setScheduledTime(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:border-indigo-500 focus:bg-white transition-soft appearance-none"
+                      >
+                        <option value="08:00">Mañana Temprano (08:00 - 10:00)</option>
+                        <option value="10:00">Media Mañana (10:00 - 12:00)</option>
+                        <option value="12:00">Mediodía (12:00 - 14:00)</option>
+                        <option value="14:00">Tarde Temprano (14:00 - 16:00)</option>
+                        <option value="16:00">Media Tarde (16:00 - 18:00)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 bg-red-50/50 border border-red-100 rounded-2xl flex items-start space-x-3 text-xs text-red-700">
+                  <Zap className="w-4 h-4 shrink-0 mt-0.5 text-red-500 animate-pulse fill-red-500" />
+                  <div className="space-y-1 leading-relaxed">
+                    <span className="font-bold">Asignación Automática Activada:</span>
+                    <p>Un técnico certificado disponible en su zona aceptará la orden inmediatamente. No requiere agendar fechas.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* CONTROLES DE NAVEGACIÓN INFERIORES */}
+        <div className="flex items-center justify-between pt-6 border-t border-slate-100 mt-8">
+          {step > 1 ? (
+            <button
+              onClick={handleBack}
+              className="inline-flex items-center px-5 py-2.5 border border-slate-200 text-slate-600 text-xs font-semibold rounded-xl hover:bg-slate-50 transition-soft cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 mr-1.5" /> Atrás
+            </button>
+          ) : (
+            <div></div> // Espaciador
+          )}
+
+          {step < 4 ? (
+            <button
+              onClick={handleNext}
+              className="inline-flex items-center px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-soft transition-soft hover-lift cursor-pointer"
+            >
+              Siguiente <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+              className="inline-flex items-center px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-soft transition-soft hover-lift cursor-pointer disabled:opacity-75"
+            >
+              {isSubmitting ? (
+                <span className="flex items-center">
+                  <svg className="animate-spin -ml-1 mr-1.5 h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Procesando Solicitud...
+                </span>
+              ) : (
+                <>
+                  Confirmar y Enviar <CheckCircle2 className="w-3.5 h-3.5 ml-1.5" />
+                </>
+              )}
+            </button>
+          )}
+        </div>
+
+      </div>
+
+    </div>
+  );
+};
+
+export default RequestWizard;
