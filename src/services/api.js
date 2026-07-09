@@ -113,7 +113,7 @@ export const api = {
       return { user: mappedUser, token: data.token };
     },
     register: async (userData) => {
-      const registerResponse = await fetch(`${API_BASE_URL}/auth/registro-cliente`, {
+      const registerResponse = await fetch(`${API_BASE_URL}/auth/registrar`, {
         method: 'POST',
         headers: getHeaders(false),
         body: JSON.stringify({
@@ -260,7 +260,8 @@ export const api = {
           description: s.descripcion_problema,
           createdAt: s.fecha_creacion || s.created_at || new Date().toISOString(),
           location: { address: s.direccion_servicio },
-          isEmergency: Boolean(s.es_emergencia || s.is_emergency),
+          isEmergency: Boolean(s.es_urgente || s.es_emergencia || s.is_emergency),
+          materiales_cliente: s.materiales_cliente || null,
           technician: s.tecnico ? {
             name: s.tecnico.nombre_completo || (s.tecnico.usuario ? `${s.tecnico.usuario.nombres} ${s.tecnico.usuario.apellidos}` : `${s.tecnico.nombres || ''} ${s.tecnico.apellidos || ''}`.trim()) || 'Técnico Asignado',
             phone: s.tecnico.telefono || 'No registrado',
@@ -282,7 +283,7 @@ export const api = {
         headers: getHeaders(true)
       });
       const data = await handleResponse(response);
-      const s = data.data;
+      const s = data.solicitud || data.data || data;
 
       let mappedStatus = s.estado ? s.estado.charAt(0).toUpperCase() + s.estado.slice(1).toLowerCase() : 'Pendiente';
       if (mappedStatus === 'En_proceso') mappedStatus = 'En ejecución';
@@ -294,10 +295,12 @@ export const api = {
         type: s.tipo_servicio || 'Avería Eléctrica',
         description: s.descripcion_problema,
         location: { address: s.direccion_servicio },
-        isEmergency: Boolean(s.es_emergencia),
+        isEmergency: Boolean(s.es_urgente || s.es_emergencia),
+        materiales_cliente: s.materiales_cliente || null,
+        timeline: data.timeline || s.timeline || [],
         scheduledDate: s.fecha_programada,
         scheduledTime: s.hora_programada,
-        createdAt: s.created_at,
+        createdAt: s.created_at || s.fecha_creacion,
         technician: s.tecnico ? {
           name: s.tecnico.nombre_completo || (s.tecnico.usuario ? `${s.tecnico.usuario.nombres} ${s.tecnico.usuario.apellidos}` : `${s.tecnico.nombres || ''} ${s.tecnico.apellidos || ''}`.trim()) || 'Técnico Asignado',
           phone: s.tecnico.telefono || s.tecnico.usuario?.telefono || 'No registrado',
@@ -325,11 +328,13 @@ export const api = {
         fecha_preferida: requestData.scheduledDate || null,
         hora_preferida: requestData.scheduledTime || null,
         notas_disponibilidad: requestData.notasDisponibilidad || (requestData.isEmergency ? 'URGENTE - Emergencia Reportada' : 'Preferente'),
+        materiales_cliente: requestData.materiales_cliente || null,
+        es_urgente: Boolean(requestData.isEmergency || requestData.es_urgente),
         // Mantenemos campos adicionales por si la API los soporta opcionalmente
         foto_base64: requestData.photo,
         latitud: requestData.coordinates?.lat,
         longitud: requestData.coordinates?.lng,
-        es_emergencia: requestData.isEmergency,
+        es_emergencia: Boolean(requestData.isEmergency || requestData.es_urgente),
         tipo_servicio: requestData.type
       };
 
@@ -373,6 +378,33 @@ export const api = {
       return data.data || data;
     },
     registerAdvance: async (requestId, paymentData) => {
+      const fileToUpload = paymentData.comprobanteFile || paymentData.comprobante;
+      if (fileToUpload instanceof File || fileToUpload instanceof Blob) {
+        const headers = { 'Accept': 'application/json' };
+        const token = localStorage.getItem('sigesto_token');
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const formData = new FormData();
+        if (paymentData.monto_pagado || paymentData.monto) {
+          formData.append('monto_pagado', String(paymentData.monto_pagado || paymentData.monto));
+        }
+        if (paymentData.metodo_pago || paymentData.banco) {
+          formData.append('metodo_pago', paymentData.metodo_pago || paymentData.banco);
+        }
+        if (paymentData.nro_operacion || paymentData.numero_operacion) {
+          formData.append('nro_operacion', paymentData.nro_operacion || paymentData.numero_operacion);
+        }
+        formData.append('comprobante', fileToUpload);
+
+        const response = await fetch(`${API_BASE_URL}/finanzas/${requestId}/adelanto`, {
+          method: 'POST',
+          headers,
+          body: formData
+        });
+        const data = await handleResponse(response);
+        return data;
+      }
+
       const payload = {
         monto_pagado: paymentData.monto_pagado || paymentData.monto,
         metodo_pago: paymentData.metodo_pago || paymentData.banco,
@@ -385,7 +417,7 @@ export const api = {
         body: JSON.stringify(payload)
       });
       const data = await handleResponse(response);
-      return data.data || data;
+      return data;
     },
     getPaymentsByRequest: async (requestId) => {
       const response = await fetch(`${API_BASE_URL}/finanzas/solicitud/${requestId}`, {
@@ -396,7 +428,7 @@ export const api = {
       return data.data || data;
     },
     getAllMyPayments: async () => {
-      const response = await fetch(`${API_BASE_URL}/mis-pagos`, {
+      const response = await fetch(`${API_BASE_URL}/finanzas/mis-pagos`, {
         method: 'GET',
         headers: getHeaders(true)
       });

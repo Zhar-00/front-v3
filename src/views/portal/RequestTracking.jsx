@@ -145,33 +145,45 @@ const RequestTracking = () => {
     }
   };
 
-  // Registrar Adelanto (Flujo simplificado sin archivo por ahora)
+  // Registrar Pago (30% mínimo hasta 100% Liquidación, con comprobante opcional/Cloudinary)
   const handleSubmitPayment = async (e) => {
     e.preventDefault();
     if (!paymentAmount || isNaN(paymentAmount) || Number(paymentAmount) <= 0) {
       alert('Por favor, ingrese un monto válido.');
       return;
     }
+    const totalAmount = request?.quotation?.total || 0;
+    const minAdvance = totalAmount * 0.30;
+    if (totalAmount > 0 && Number(paymentAmount) < minAdvance - 0.01) {
+      alert(`El pago mínimo permitido es el 30% del total (S/ ${minAdvance.toFixed(2)}). Puede abonar desde el 30% hasta el 100% para liquidación total.`);
+      return;
+    }
+    if (!paymentOperation && !paymentFile) {
+      alert('Debe ingresar el número de operación o adjuntar el comprobante de pago.');
+      return;
+    }
 
     setSubmittingPayment(true);
     try {
-      // Registrar Adelanto en Finanzas
-      await api.finances.registerAdvance(id, {
+      const result = await api.finances.registerAdvance(id, {
         monto_pagado: Number(paymentAmount),
         metodo_pago: paymentMethod,
-        nro_operacion: paymentOperation,
-        url_comprobante: 'pendiente-de-carga'
+        nro_operacion: paymentOperation || 'Adjunto',
+        comprobanteFile: paymentFile
       });
 
-      alert('¡Adelanto registrado exitosamente! Su pago está en revisión.');
+      if (Number(paymentAmount) >= totalAmount - 0.01 || result?.es_liquidacion_total) {
+        alert('¡Liquidación Total (100%)! Has completado el pago de la cotización exitosamente.');
+      } else {
+        alert('¡Pago registrado exitosamente! Su comprobante está en revisión.');
+      }
       await loadRequest();
       
-      // Reset form
       setPaymentAmount('');
       setPaymentOperation('');
       setPaymentFile(null);
     } catch (err) {
-      alert(err.message || 'Error al registrar el adelanto.');
+      alert(err.message || 'Error al registrar el pago.');
     } finally {
       setSubmittingPayment(false);
     }
@@ -248,6 +260,11 @@ const RequestTracking = () => {
               <span className="text-xs font-mono font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
                 {request.id}
               </span>
+              {request.isEmergency && (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-600 border border-rose-200">
+                  <AlertTriangle className="w-3.5 h-3.5 mr-1" /> URGENTE
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-400 mt-0.5">Tipo: {request.type}</p>
           </div>
@@ -320,6 +337,12 @@ const RequestTracking = () => {
             <p className="text-xs text-slate-500 leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-100/60">
               {request.description}
             </p>
+            {request.materiales_cliente && (
+              <div className="bg-blue-50/60 border border-blue-100 rounded-2xl p-4 text-xs text-blue-900 space-y-1 mt-3">
+                <span className="font-bold block text-blue-700 uppercase tracking-wider text-[10px]">Materiales aportados por el cliente</span>
+                <p className="leading-relaxed">{request.materiales_cliente}</p>
+              </div>
+            )}
             
             <div className="flex flex-wrap items-center gap-6 pt-2 text-xs text-slate-500 border-t border-slate-100">
               <span className="flex items-center">
@@ -424,7 +447,7 @@ const RequestTracking = () => {
                     onClick={() => {
                       setIsQuotationAccepted(true);
                       if (request?.quotation?.total) {
-                        setPaymentAmount(Math.round(request.quotation.total * 0.5).toString());
+                        setPaymentAmount((parseFloat(request.quotation.total) * 0.5).toFixed(2));
                       }
                     }}
                     className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-soft hover-lift cursor-pointer flex items-center justify-center space-x-2 transition-soft border border-indigo-700"
@@ -558,19 +581,35 @@ const RequestTracking = () => {
                       </div>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">Número de Operación</label>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">Número de Operación (Opcional si adjunta foto)</label>
                       <div className="relative rounded-xl shadow-soft-sm">
                         <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                           <Hash className="w-4 h-4 text-slate-400" />
                         </div>
                         <input
                           type="text"
-                          required
                           value={paymentOperation}
                           onChange={(e) => setPaymentOperation(e.target.value)}
                           className="w-full pl-9 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-soft"
                           placeholder="Ej: 351-98765432"
                         />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">Adjuntar Comprobante (Cloudinary)</label>
+                      <div className="relative rounded-xl border border-dashed border-slate-300 p-3 bg-slate-50 hover:bg-slate-100 transition-soft">
+                        <input
+                          type="file"
+                          accept="image/*,.pdf"
+                          onChange={(e) => setPaymentFile(e.target.files?.[0] || null)}
+                          className="w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
+                        />
+                        {paymentFile && (
+                          <p className="text-[11px] text-emerald-600 font-semibold mt-1">
+                            ✓ {paymentFile.name}
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -625,11 +664,12 @@ const RequestTracking = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-4 rounded-xl border border-slate-200/60 bg-slate-50 flex justify-between items-center shadow-soft-sm">
                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Adelanto Requerido (50%)</p>
-                      <p className="text-lg font-black text-slate-800 mt-0.5">S/ {(totalAmount * 0.5).toFixed(2)}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Adelanto Mínimo (30%)</p>
+                      <p className="text-lg font-black text-slate-800 mt-0.5">S/ {(totalAmount * 0.30).toFixed(2)}</p>
+                      <span className="text-[10px] text-indigo-600 font-semibold">O liquidar 100%: S/ {totalAmount.toFixed(2)}</span>
                    </div>
                    <div className="text-right">
-                      {totalPaid >= (totalAmount * 0.5) - 0.01 ? (
+                      {totalPaid >= (totalAmount * 0.30) - 0.01 ? (
                          <span className="bg-emerald-50 text-emerald-600 text-[9px] font-extrabold px-2 py-1 rounded border border-emerald-100 uppercase flex items-center">
                            <CheckCircle2 className="w-3 h-3 mr-1" /> Abonado
                          </span>
@@ -727,42 +767,98 @@ const RequestTracking = () => {
             </div>
           )}
 
-          {/* EVIDENCIAS (Degradación Progresiva) */}
-          {isEvidencesSupported && (evidencesError || (evidences && evidences.length > 0)) && (
-             <div className="bg-white border border-slate-200/60 rounded-3xl p-6 shadow-soft space-y-4">
-               <h3 className="font-display font-bold text-sm text-slate-800 flex items-center">
-                 <Camera className="w-4.5 h-4.5 text-slate-400 mr-2" /> Evidencias Adjuntas
-               </h3>
-               {evidencesError ? (
-                 <div className="bg-amber-50 text-amber-700 p-4 rounded-xl border border-amber-100 flex items-center text-xs">
-                   <AlertTriangle className="w-4 h-4 mr-2 shrink-0" />
-                   <p>{evidencesError}</p>
-                 </div>
-               ) : (
-                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                   {evidences.map((ev) => (
-                     <div key={ev.id_evidencia} className="rounded-2xl overflow-hidden border border-slate-100 h-32 bg-slate-50 group relative">
-                       {ev.tipo_archivo?.startsWith('image') ? (
-                         <img 
-                           src={ev.url_archivo} 
-                           alt={ev.descripcion || 'Evidencia'} 
-                           className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                         />
-                       ) : (
-                         <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
-                           <Camera className="w-6 h-6 mb-2" />
-                           <span className="text-[10px] uppercase font-bold">{ev.tipo_archivo || 'Archivo'}</span>
-                         </div>
-                       )}
-                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">
-                         {ev.descripcion || 'Sin descripción'}
-                       </div>
-                     </div>
-                   ))}
-                 </div>
-               )}
-             </div>
-          )}
+           {/* EVIDENCIAS CON NOTAS (Degradación Progresiva) */}
+           {isEvidencesSupported && (evidencesError || (evidences && evidences.length > 0)) && (
+              <div className="bg-white border border-slate-200/60 rounded-3xl p-6 shadow-soft space-y-4">
+                <h3 className="font-display font-bold text-sm text-slate-800 flex items-center">
+                  <Camera className="w-4.5 h-4.5 text-slate-400 mr-2" /> Evidencias Adjuntas y Observaciones del Técnico
+                </h3>
+                {evidencesError ? (
+                  <div className="bg-amber-50 text-amber-700 p-4 rounded-xl border border-amber-100 flex items-center text-xs">
+                    <AlertTriangle className="w-4 h-4 mr-2 shrink-0" />
+                    <p>{evidencesError}</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    {evidences.map((ev, idx) => (
+                      <div key={ev.id_evidencia || idx} className="rounded-2xl overflow-hidden border border-slate-200/80 bg-white shadow-soft-sm flex flex-col">
+                        <div className="h-36 bg-slate-100 relative">
+                          {ev.tipo_archivo?.startsWith('image') || ev.url_archivo?.match(/\.(jpg|jpeg|png|webp|gif)$/i) || !ev.tipo_archivo ? (
+                            <img 
+                              src={ev.url_archivo} 
+                              alt={ev.observaciones || ev.descripcion || 'Evidencia'} 
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
+                              <Camera className="w-6 h-6 mb-2" />
+                              <span className="text-[10px] uppercase font-bold">{ev.tipo_archivo || 'Archivo'}</span>
+                            </div>
+                          )}
+                          {ev.tipo_evidencia && (
+                            <span className="absolute top-2 left-2 bg-slate-900/80 backdrop-blur-sm text-white text-[9px] font-bold px-2.5 py-1 rounded-full uppercase">
+                              {ev.tipo_evidencia.replace('_', ' ')}
+                            </span>
+                          )}
+                        </div>
+                        {(ev.observaciones || ev.descripcion) && (
+                          <div className="p-3 bg-slate-50 border-t border-slate-100 flex-1">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Observación del técnico</span>
+                            <p className="text-xs text-slate-700 italic mt-0.5">
+                              "{ev.observaciones || ev.descripcion}"
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+           )}
+
+           {/* TIMELINE DE CAMBIOS DE ESTADO */}
+           {request.timeline && request.timeline.length > 0 && (
+            <div className="bg-white border border-slate-200/60 rounded-3xl p-6 shadow-soft space-y-4">
+              <div className="flex items-center space-x-3 border-b border-slate-100 pb-4">
+                <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-display font-bold text-sm text-slate-800">
+                    Historial y Timeline de Estado
+                  </h3>
+                  <p className="text-[11px] text-slate-400">Trazabilidad cronológica de la solicitud</p>
+                </div>
+              </div>
+              <div className="space-y-4 pt-2">
+                {request.timeline.map((item, idx) => (
+                  <div key={idx} className="flex items-start space-x-3">
+                    <div className="flex flex-col items-center mt-1">
+                      <div className="w-3 h-3 rounded-full bg-indigo-500 ring-4 ring-indigo-100"></div>
+                      {idx < request.timeline.length - 1 && (
+                        <div className="w-0.5 h-10 bg-slate-200 my-1"></div>
+                      )}
+                    </div>
+                    <div className="flex-1 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-800">
+                          {item.estado_anterior || 'Inicio'} → {item.estado_nuevo}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {item.fecha_cambio}
+                        </span>
+                      </div>
+                      {item.usuario_accion && (
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          Por: <span className="font-semibold text-slate-700">{item.usuario_accion}</span> ({item.rol_usuario || 'USUARIO'})
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+           )}
         </div>
 
         {/* Columna Lateral (Técnico y ETA) */}

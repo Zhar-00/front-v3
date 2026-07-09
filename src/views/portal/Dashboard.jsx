@@ -23,6 +23,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [cancelLoadingId, setCancelLoadingId] = useState(null);
   const [dashboardError, setDashboardError] = useState(null);
+  const [showAllHistory, setShowAllHistory] = useState(false);
 
   const fetchRequests = async () => {
     try {
@@ -70,54 +71,67 @@ const Dashboard = () => {
   };
 
   const getStatusBadge = (status) => {
-    switch (status) {
-      case 'Pendiente':
-        return (
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-600 border border-amber-100">
-            <Clock className="w-3.5 h-3.5 mr-1" /> Pendiente
-          </span>
-        );
-      case 'Asignado':
-        return (
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100">
-            <User className="w-3.5 h-3.5 mr-1" /> Asignado
-          </span>
-        );
-      case 'En camino':
-        return (
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-50 text-sky-600 border border-sky-100">
-            <Activity className="w-3.5 h-3.5 mr-1 animate-pulse" /> En Camino
-          </span>
-        );
-      case 'En ejecución':
-        return (
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-purple-50 text-purple-600 border border-purple-100">
-            <Wrench className="w-3.5 h-3.5 mr-1" /> En Curso
-          </span>
-        );
-      case 'Finalizado':
-        return (
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">
-            <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Finalizado
-          </span>
-        );
-      case 'Cancelado':
-        return (
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-500 border border-rose-100">
-            <XCircle className="w-3.5 h-3.5 mr-1" /> Anulado
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-50 text-slate-600 border border-slate-100">
-            {status}
-          </span>
-        );
+    const s = (status || '').toLowerCase();
+    
+    if (s.includes('pendiente')) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-600 border border-amber-100">
+          <Clock className="w-3.5 h-3.5 mr-1" /> Pendiente
+        </span>
+      );
     }
+    if (s.includes('cotizad')) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-600 border border-blue-100">
+          <FileText className="w-3.5 h-3.5 mr-1" /> Cotizado
+        </span>
+      );
+    }
+    if (s.includes('asignad')) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100">
+          <User className="w-3.5 h-3.5 mr-1" /> Asignado
+        </span>
+      );
+    }
+    if (s.includes('camino')) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-50 text-sky-600 border border-sky-100">
+          <Activity className="w-3.5 h-3.5 mr-1 animate-pulse" /> En Camino
+        </span>
+      );
+    }
+    if (s.includes('ejecución') || s.includes('curso') || s.includes('proceso')) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-purple-50 text-purple-600 border border-purple-100">
+          <Wrench className="w-3.5 h-3.5 mr-1" /> En Curso
+        </span>
+      );
+    }
+    if (s.includes('finalizad') || s.includes('pagad') || s.includes('aprobada')) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">
+          <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> {s.includes('pagad') ? 'Pagado' : 'Finalizado'}
+        </span>
+      );
+    }
+    if (s.includes('cancelad') || s.includes('anulad') || s.includes('rechazad')) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-500 border border-rose-100">
+          <XCircle className="w-3.5 h-3.5 mr-1" /> Anulado
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-50 text-slate-600 border border-slate-100">
+        {status}
+      </span>
+    );
   };
 
   const featuredRequest = requests.length > 0 ? requests[0] : null;
   const historyRequests = requests.length > 1 ? requests.slice(1) : [];
+  const visibleHistory = showAllHistory ? historyRequests : historyRequests.slice(0, 6);
 
   const STEPPER_STAGES = [
     { id: 'PENDIENTE', label: 'Pendiente', desc: 'Revisión en oficina' },
@@ -251,7 +265,12 @@ const Dashboard = () => {
                 </h3>
                 <p className="text-xs text-slate-400 mt-1">{featuredRequest.type}</p>
               </div>
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-2">
+                {featuredRequest.isEmergency && (
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-600 border border-rose-100">
+                    <AlertTriangle className="w-3.5 h-3.5 mr-1" /> URGENTE
+                  </span>
+                )}
                 {getStatusBadge(featuredRequest.status)}
                 {featuredRequest.status === 'Pendiente' && (
                   <button
@@ -315,6 +334,12 @@ const Dashboard = () => {
                 <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs text-slate-600 leading-relaxed">
                   {featuredRequest.description}
                 </div>
+                {featuredRequest.materiales_cliente && (
+                  <div className="bg-blue-50/60 border border-blue-100 p-3 rounded-xl text-[11px] text-blue-900 mt-2">
+                    <span className="font-bold text-blue-700 block text-[10px] uppercase">Materiales del cliente</span>
+                    {featuredRequest.materiales_cliente}
+                  </div>
+                )}
                 <div className="flex items-center text-xs text-slate-500 pt-2">
                   <MapPin className="w-4 h-4 text-slate-400 mr-1.5 shrink-0" />
                   <span className="truncate">{featuredRequest.location?.address}</span>
@@ -364,14 +389,21 @@ const Dashboard = () => {
             <div className="space-y-4">
               <h3 className="font-display font-bold text-sm text-slate-500 uppercase tracking-wider pt-4">Historial Reciente</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {historyRequests.map((request) => (
+                {visibleHistory.map((request) => (
                   <div 
                     key={request.id}
                     className="bg-white/80 backdrop-blur-md border border-slate-200/60 rounded-2xl p-5 shadow-soft hover:border-slate-300 transition-soft flex flex-col space-y-3"
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold text-slate-400 font-mono tracking-wider">{request.id}</span>
-                      {getStatusBadge(request.status)}
+                      <div className="flex items-center space-x-1.5">
+                        {request.isEmergency && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100">
+                            URGENTE
+                          </span>
+                        )}
+                        {getStatusBadge(request.status)}
+                      </div>
                     </div>
                     
                     <div className="flex-1">
@@ -391,6 +423,17 @@ const Dashboard = () => {
                   </div>
                 ))}
               </div>
+              
+              {historyRequests.length > 6 && (
+                <div className="pt-2 text-center">
+                  <button
+                    onClick={() => setShowAllHistory(!showAllHistory)}
+                    className="inline-flex items-center justify-center px-6 py-2.5 bg-white hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-xl border border-slate-200 transition-soft cursor-pointer hover-lift shadow-sm"
+                  >
+                    {showAllHistory ? 'Ver Menos' : `Ver más (${historyRequests.length - 6} restantes)`}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

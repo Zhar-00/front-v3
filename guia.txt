@@ -1,1335 +1,1246 @@
-# 📘 Guía Actualizada de Consumo de API SIGESTO V2 para Frontends
+# 📘 Guía Completa de Funcionalidades para Frontend
 
-## 📋 Tabla de Contenidos
-
-1. [Configuración Base](#1-configuración-base)
-2. [Autenticación](#2-autenticación)
-3. [Módulo Usuarios](#3-módulo-usuarios)
-4. [Módulo Catálogo](#4-módulo-catálogo)
-5. [Módulo Solicitudes](#5-módulo-solicitudes)
-6. [Módulo Evidencias](#6-módulo-evidencias)
-7. [Módulo Finanzas](#7-módulo-finanzas)
-8. [Manejo de Errores](#8-manejo-de-errores)
+Esta guía documenta todas las funcionalidades implementadas en el backend y cómo consumirlas desde el frontend (Flutter/Web).
 
 ---
 
-## 1. Configuración Base
+## 📋 Índice
 
-### 🌐 URL Base
-```
-http://TU_SERVIDOR/api
-```
+1. [Campo de Urgencia](#1-campo-de-urgencia)
+2. [Notas en Evidencias](#2-notas-en-evidencias)
+3. [Timeline de Cambios de Estado](#3-timeline-de-cambios-de-estado)
+4. [Liquidación 100% con Mínimo 30%](#4-liquidación-100-con-mínimo-30)
+5. [Validación Flexible de Comprobantes](#5-validación-flexible-de-comprobantes)
+6. [Cloudinary para Comprobantes](#6-cloudinary-para-comprobantes)
+7. [Materiales del Cliente](#7-materiales-del-cliente)
+8. [Tipos de Trabajo y Sugerencias](#8-tipos-de-trabajo-y-sugerencias)
+9. [Servicio de Reportes](#9-servicio-de-reportes)
 
-### 🔑 Headers Comunes
+---
+
+## 1. Campo de Urgencia
+
+### 🎯 ¿Qué hace?
+Permite al cliente marcar una solicitud como urgente. Las solicitudes urgentes aparecen primero en las listas del admin y técnico.
+
+### 📡 Endpoints
+
+#### **Crear solicitud con urgencia**
 ```http
-Authorization: Bearer {TOKEN}
+POST /api/solicitudes
+Authorization: Bearer {TOKEN_CLIENTE}
 Content-Type: application/json
-Accept: application/json
-```
 
----
-
-## 2. Autenticación
-
-### 🔐 2.1 Login
-
-**Endpoint:** `POST /api/auth/login`
-
-**Usuario:** Público (sin token)
-
-**Request:**
-```json
-{
-  "email": "admin@sigesto.com",
-  "password": "123456"
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "mensaje": "Inicio de sesión exitoso.",
-  "token": "1|abc123xyz...",
-  "usuario": {
-    "id": 1,
-    "nombre_completo": "Carlos Administrador",
-    "email": "admin@sigesto.com",
-    "id_rol": 1,
-    "nombre_rol": "ADMINISTRADOR"
-  }
-}
-```
-
-**Response (422 - Error):**
-```json
-{
-  "mensaje": "Error de autenticación",
-  "errores": {
-    "email": ["Las credenciales proporcionadas son incorrectas."]
-  }
-}
-```
-
-#### 🟢 Java (Android):
-```java
-// Agregar en build.gradle
-implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-implementation 'com.google.code.gson:gson:2.10.1'
-
-public class ApiClient {
-    private static final String BASE_URL = "http://10.0.2.2:8000/api";
-    private static final OkHttpClient client = new OkHttpClient();
-    private static final Gson gson = new Gson();
-    private static String authToken = null;
-    
-    public static void setToken(String token) {
-        authToken = token;
-    }
-    
-    public static void clearToken() {
-        authToken = null;
-    }
-    
-    public static String postJson(String endpoint, Object body) throws IOException {
-        String json = gson.toJson(body);
-        RequestBody requestBody = RequestBody.create(
-            json, MediaType.parse("application/json")
-        );
-        
-        Request.Builder builder = new Request.Builder()
-            .url(BASE_URL + endpoint)
-            .addHeader("Accept", "application/json")
-            .post(requestBody);
-        
-        if (authToken != null) {
-            builder.addHeader("Authorization", "Bearer " + authToken);
-        }
-        
-        Request request = builder.build();
-        try (Response response = client.newCall(request).execute()) {
-            return response.body().string();
-        }
-    }
-}
-
-// Uso:
-Map<String, String> credentials = new HashMap<>();
-credentials.put("email", "admin@sigesto.com");
-credentials.put("password", "123456");
-
-try {
-    String response = ApiClient.postJson("/auth/login", credentials);
-    JsonObject json = JsonParser.parseString(response).getAsJsonObject();
-    
-    String token = json.get("token").getAsString();
-    ApiClient.setToken(token);
-    
-    System.out.println("Login exitoso: " + token);
-} catch (IOException e) {
-    e.printStackTrace();
-}
-```
-
-#### 🔵 Flutter (Dart):
-```dart
-// pubspec.yaml
-dependencies:
-  http: ^1.2.0
-
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-
-class ApiClient {
-  static const String baseUrl = 'http://10.0.2.2:8000/api';
-  static String? _authToken;
-  
-  static void setToken(String token) {
-    _authToken = token;
-  }
-  
-  static void clearToken() {
-    _authToken = null;
-  }
-  
-  static Map<String, String> get _headers => {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    if (_authToken != null) 'Authorization': 'Bearer $_authToken',
-  };
-  
-  static Future<Map<String, dynamic>> post(String endpoint, Map<String, dynamic> body) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: _headers,
-      body: jsonEncode(body),
-    );
-    
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return data;
-    } else {
-      throw ApiException(
-        message: data['mensaje'] ?? 'Error desconocido',
-        statusCode: response.statusCode,
-        errors: data['errores'],
-      );
-    }
-  }
-}
-
-class ApiException implements Exception {
-  final String message;
-  final int statusCode;
-  final dynamic errors;
-  
-  ApiException({required this.message, required this.statusCode, this.errors});
-  
-  @override
-  String toString() => 'ApiException($statusCode): $message';
-}
-
-// Uso:
-try {
-  final response = await ApiClient.post('/auth/login', {
-    'email': 'admin@sigesto.com',
-    'password': '123456',
-  });
-  
-  final token = response['token'] as String;
-  ApiClient.setToken(token);
-  
-  print('Login exitoso: $token');
-} on ApiException catch (e) {
-  print('Error ${e.statusCode}: ${e.message}');
-}
-```
-
-#### 🟡 JavaScript (Fetch API):
-```javascript
-class ApiClient {
-  constructor(baseUrl = 'http://localhost:8000/api') {
-    this.baseUrl = baseUrl;
-    this.authToken = localStorage.getItem('authToken');
-  }
-  
-  setToken(token) {
-    this.authToken = token;
-    localStorage.setItem('authToken', token);
-  }
-  
-  clearToken() {
-    this.authToken = null;
-    localStorage.removeItem('authToken');
-  }
-  
-  get headers() {
-    const headers = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-    if (this.authToken) {
-      headers['Authorization'] = `Bearer ${this.authToken}`;
-    }
-    return headers;
-  }
-  
-  async post(endpoint, body) {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify(body),
-    });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new ApiError(data.mensaje || 'Error', response.status, data.errores);
-    }
-    
-    return data;
-  }
-}
-
-class ApiError extends Error {
-  constructor(message, statusCode, errors) {
-    super(message);
-    this.statusCode = statusCode;
-    this.errors = errors;
-  }
-}
-
-// Instancia global
-const api = new ApiClient();
-
-// Uso:
-try {
-  const response = await api.post('/auth/login', {
-    email: 'admin@sigesto.com',
-    password: '123456',
-  });
-  
-  api.setToken(response.token);
-  console.log('Login exitoso:', response.token);
-} catch (error) {
-  console.error(`Error ${error.statusCode}:`, error.message);
-}
-```
-
----
-
-### 🚪 2.2 Logout
-
-**Endpoint:** `POST /api/auth/logout`
-
-**Usuario:** Todos los autenticados
-
-**Request:** Solo headers (sin body)
-
-**Response (200 OK):**
-```json
-{
-  "mensaje": "Sesión cerrada correctamente."
-}
-```
-
-####  Java:
-```java
-String response = ApiClient.postJson("/auth/logout", new HashMap<>());
-ApiClient.clearToken();
-```
-
-#### 🔵 Flutter:
-```dart
-await ApiClient.post('/auth/logout', {});
-ApiClient.clearToken();
-```
-
-####  JavaScript:
-```javascript
-await api.post('/auth/logout', {});
-api.clearToken();
-```
-
----
-
-### 👤 2.3 Registro de Cliente
-
-**Endpoint:** `POST /api/auth/registro-cliente`
-
-**Usuario:** Público (sin token)
-
-**Request:**
-```json
-{
-  "nombres": "Juan Carlos",
-  "apellidos": "Mendoza Ruiz",
-  "email": "juan@email.com",
-  "password": "123456",
-  "password_confirmation": "123456",
-  "telefono": "987654321",
-  "direccion": "Av. Los Incas 789",
-  "dni_ruc": "10123456789"
-}
-```
-
-**Response (201 Created):**
-```json
-{
-  "mensaje": "Cliente registrado exitosamente. Ya puede iniciar sesión.",
-  "data": {
-    "id_usuario": 4,
-    "nombre_completo": "Juan Carlos Mendoza Ruiz",
-    "email": "juan@email.com",
-    "rol": "CLIENTE",
-    "tipo_perfil": "CLIENTE",
-    "datos_perfil": {
-      "telefono": "987654321",
-      "direccion": "Av. Los Incas 789",
-      "dni_ruc": "10123456789"
-    }
-  }
-}
-```
-
-####  Java:
-```java
-Map<String, Object> data = new HashMap<>();
-data.put("nombres", "Juan Carlos");
-data.put("apellidos", "Mendoza Ruiz");
-data.put("email", "juan@email.com");
-data.put("password", "123456");
-data.put("password_confirmation", "123456");
-data.put("telefono", "987654321");
-data.put("direccion", "Av. Los Incas 789");
-data.put("dni_ruc", "10123456789");
-
-String response = ApiClient.postJson("/auth/registro-cliente", data);
-```
-
-#### 🔵 Flutter:
-```dart
-final response = await ApiClient.post('/auth/registro-cliente', {
-  'nombres': 'Juan Carlos',
-  'apellidos': 'Mendoza Ruiz',
-  'email': 'juan@email.com',
-  'password': '123456',
-  'password_confirmation': '123456',
-  'telefono': '987654321',
-  'direccion': 'Av. Los Incas 789',
-  'dni_ruc': '10123456789',
-});
-```
-
-#### 🟡 JavaScript:
-```javascript
-const response = await api.post('/auth/registro-cliente', {
-  nombres: 'Juan Carlos',
-  apellidos: 'Mendoza Ruiz',
-  email: 'juan@email.com',
-  password: '123456',
-  password_confirmation: '123456',
-  telefono: '987654321',
-  direccion: 'Av. Los Incas 789',
-  dni_ruc: '10123456789',
-});
-```
-
----
-
-## 3. Módulo Usuarios
-
-### 👁️ 3.1 Ver Mi Perfil
-
-**Endpoint:** `GET /api/usuarios/perfil`
-
-**Usuario:** Todos los autenticados
-
-**Response (200 OK):**
-```json
-{
-  "mensaje": "Perfil obtenido exitosamente.",
-  "data": {
-    "id_usuario": 3,
-    "nombre_completo": "Maria Perez",
-    "email": "cliente@sigesto.com",
-    "rol": "CLIENTE",
-    "tipo_perfil": "CLIENTE",
-    "datos_perfil": {
-      "id_cliente": 1,
-      "telefono": "987654321",
-      "direccion": "Av. Sol 123",
-      "dni_ruc": "10123456789"
-    }
-  }
-}
-```
-
-#### 🟢 Java:
-```java
-public static String get(String endpoint) throws IOException {
-    Request.Builder builder = new Request.Builder()
-        .url(BASE_URL + endpoint)
-        .addHeader("Accept", "application/json");
-    
-    if (authToken != null) {
-        builder.addHeader("Authorization", "Bearer " + authToken);
-    }
-    
-    Request request = builder.build();
-    try (Response response = client.newCall(request).execute()) {
-        return response.body().string();
-    }
-}
-
-String response = ApiClient.get("/usuarios/perfil");
-```
-
-#### 🔵 Flutter:
-```dart
-static Future<Map<String, dynamic>> get(String endpoint) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: _headers,
-    );
-    
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return data;
-    } else {
-      throw ApiException(
-        message: data['mensaje'] ?? 'Error desconocido',
-        statusCode: response.statusCode,
-      );
-    }
-}
-
-final response = await ApiClient.get('/usuarios/perfil');
-```
-
-####  JavaScript:
-```javascript
-async get(endpoint) {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      method: 'GET',
-      headers: this.headers,
-    });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new ApiError(data.mensaje || 'Error', response.status);
-    }
-    
-    return data;
-}
-
-const response = await api.get('/usuarios/perfil');
-```
-
----
-
-### ✏️ 3.2 Actualizar Mi Perfil
-
-**Endpoint:** `PUT /api/usuarios/perfil`
-
-**Usuario:** Todos los autenticados
-
-**Request:**
-```json
-{
-  "nombres": "Maria Actualizada",
-  "telefono": "999888777",
-  "direccion": "Nueva dirección 123",
-  "password": "nuevaclave123",
-  "password_confirmation": "nuevaclave123"
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "mensaje": "Perfil actualizado exitosamente.",
-  "data": { ... }
-}
-```
-
-####  Java:
-```java
-public static String putJson(String endpoint, Object body) throws IOException {
-    String json = gson.toJson(body);
-    RequestBody requestBody = RequestBody.create(
-        json, MediaType.parse("application/json")
-    );
-    
-    Request.Builder builder = new Request.Builder()
-        .url(BASE_URL + endpoint)
-        .addHeader("Accept", "application/json")
-        .put(requestBody);
-    
-    if (authToken != null) {
-        builder.addHeader("Authorization", "Bearer " + authToken);
-    }
-    
-    Request request = builder.build();
-    try (Response response = client.newCall(request).execute()) {
-        return response.body().string();
-    }
-}
-
-Map<String, Object> data = new HashMap<>();
-data.put("telefono", "999888777");
-data.put("direccion", "Nueva dirección 123");
-
-String response = ApiClient.putJson("/usuarios/perfil", data);
-```
-
-#### 🔵 Flutter:
-```dart
-static Future<Map<String, dynamic>> put(String endpoint, Map<String, dynamic> body) async {
-    final response = await http.put(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: _headers,
-      body: jsonEncode(body),
-    );
-    
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return data;
-    } else {
-      throw ApiException(
-        message: data['mensaje'] ?? 'Error desconocido',
-        statusCode: response.statusCode,
-      );
-    }
-}
-
-final response = await ApiClient.put('/usuarios/perfil', {
-  'telefono': '999888777',
-  'direccion': 'Nueva dirección 123',
-});
-```
-
-#### 🟡 JavaScript:
-```javascript
-async put(endpoint, body) {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      method: 'PUT',
-      headers: this.headers,
-      body: JSON.stringify(body),
-    });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new ApiError(data.mensaje || 'Error', response.status);
-    }
-    
-    return data;
-}
-
-const response = await api.put('/usuarios/perfil', {
-  telefono: '999888777',
-  direccion: 'Nueva dirección 123',
-});
-```
-
----
-
-## 4. Módulo Catálogo
-
-### 📦 4.1 Listar Catálogo
-
-**Endpoint:** `GET /api/catalogo`
-
-**Usuario:** ADMIN, TECNICO
-
-**Query params opcionales:**
-- `?todos=1` → Incluye inactivos
-- `?ver_eliminados=1` → Incluye eliminados lógicamente
-
-**Response (200 OK):**
-```json
-{
-  "mensaje": "Catálogo obtenido exitosamente.",
-  "data": [
-    {
-      "id_item": 1,
-      "sku_codigo": "CABLE-2.5MM",
-      "tipo_item": "MATERIAL",
-      "nombre": "Cable THW 2.5mm",
-      "descripcion": "Rollo 100m",
-      "unidad_medida": "ROLLO",
-      "precio_ref": "135.00",
-      "activo": true
-    }
-  ]
-}
-```
-
-#### 🟢 Java:
-```java
-String response = ApiClient.get("/catalogo");
-// Con parámetros:
-String response = ApiClient.get("/catalogo?todos=1&ver_eliminados=1");
-```
-
-#### 🔵 Flutter:
-```dart
-final response = await ApiClient.get('/catalogo');
-// Con parámetros:
-final response = await ApiClient.get('/catalogo?todos=1&ver_eliminados=1');
-```
-
-#### 🟡 JavaScript:
-```javascript
-const response = await api.get('/catalogo');
-// Con parámetros:
-const response = await api.get('/catalogo?todos=1&ver_eliminados=1');
-```
-
----
-
-### 🔍 4.2 Buscar en Catálogo
-
-**Endpoint:** `GET /api/catalogo/buscar?q={texto}`
-
-**Usuario:** ADMIN, TECNICO
-
-**Response (200 OK):**
-```json
-{
-  "mensaje": "Búsqueda realizada exitosamente.",
-  "data": [
-    {
-      "id_item": 1,
-      "sku_codigo": "CABLE-2.5MM",
-      "nombre": "Cable THW 2.5mm",
-      "precio_ref": "135.00"
-    }
-  ]
-}
-```
-
-#### 🟢 Java:
-```java
-String query = "cable";
-String response = ApiClient.get("/catalogo/buscar?q=" + URLEncoder.encode(query, "UTF-8"));
-```
-
-####  Flutter:
-```dart
-final query = 'cable';
-final response = await ApiClient.get('/catalogo/buscar?q=${Uri.encodeComponent(query)}');
-```
-
-#### 🟡 JavaScript:
-```javascript
-const query = 'cable';
-const response = await api.get(`/catalogo/buscar?q=${encodeURIComponent(query)}`);
-```
-
----
-
-## 5. Módulo Solicitudes
-
-### 🎫 5.1 Crear Solicitud (CON PREFERENCIA DE HORARIO)
-
-**Endpoint:** `POST /api/solicitudes`
-
-**Usuario:** CLIENTE
-
-**Request (con preferencia):**
-```json
 {
   "id_cliente": 1,
-  "descripcion_problema": "Necesito instalar un tablero eléctrico nuevo",
-  "direccion_servicio": "Av. Los Incas 456, Cusco",
-  "fecha_preferida": "2026-06-20",
-  "hora_preferida": "10:00",
-  "notas_disponibilidad": "Solo disponible en las mañanas"
+  "descripcion_problema": "Cortocircuito en la cocina",
+  "direccion_servicio": "Av. Los Incas 456",
+  "es_urgente": true,
+  "fecha_preferida": "2026-07-10",
+  "hora_preferida": "10:00"
 }
 ```
 
-**Request (sin preferencia):**
-```json
-{
-  "id_cliente": 1,
-  "descripcion_problema": "Necesito instalar un tablero eléctrico nuevo",
-  "direccion_servicio": "Av. Los Incas 456, Cusco"
-}
-```
-
-**Response (201 Created):**
+**Respuesta (201):**
 ```json
 {
   "mensaje": "Solicitud generada con éxito.",
-  "ticket": "019ec9c0-c3e7-71b4-8736-305287a7e91b",
+  "ticket": "uuid-...",
   "data": {
-    "uuid_solicitud": "019ec9c0-c3e7-71b4-8736-305287a7e91b",
+    "uuid_solicitud": "uuid-...",
     "estado": "PENDIENTE",
-    "fecha_preferida": "2026-06-20",
-    "hora_preferida": "10:00:00",
-    "notas_disponibilidad": "Solo disponible en las mañanas",
-    "cotizacion": { "estado": "BORRADOR", "total": "0.00" }
+    "es_urgente": true,
+    "descripcion_problema": "Cortocircuito en la cocina"
   }
 }
 ```
 
-#### 🟢 Java:
-```java
-Map<String, Object> data = new HashMap<>();
-data.put("id_cliente", 1);
-data.put("descripcion_problema", "Necesito instalar un tablero eléctrico nuevo");
-data.put("direccion_servicio", "Av. Los Incas 456, Cusco");
-data.put("fecha_preferida", "2026-06-20");
-data.put("hora_preferida", "10:00");
-data.put("notas_disponibilidad", "Solo disponible en las mañanas");
-
-String response = ApiClient.postJson("/solicitudes", data);
-JsonObject json = JsonParser.parseString(response).getAsJsonObject();
-String uuid = json.get("ticket").getAsString();
+#### **Admin ve lista (urgentes primero)**
+```http
+GET /api/solicitudes
+Authorization: Bearer {TOKEN_ADMIN}
 ```
 
-#### 🔵 Flutter:
+**Respuesta (200):**
+```json
+{
+  "data": [
+    {
+      "uuid_solicitud": "uuid-urgente",
+      "es_urgente": true,
+      "estado": "PENDIENTE",
+      "descripcion_problema": "Cortocircuito..."
+    },
+    {
+      "uuid_solicitud": "uuid-normal",
+      "es_urgente": false,
+      "estado": "PENDIENTE",
+      "descripcion_problema": "Instalación..."
+    }
+  ]
+}
+```
+
+#### **Admin filtra solo urgentes**
+```http
+GET /api/solicitudes?urgentes=1&estado=PENDIENTE
+Authorization: Bearer {TOKEN_ADMIN}
+```
+
+### 🎨 Frontend (Flutter)
+
 ```dart
-final response = await ApiClient.post('/solicitudes', {
-  'id_cliente': 1,
-  'descripcion_problema': 'Necesito instalar un tablero eléctrico nuevo',
-  'direccion_servicio': 'Av. Los Incas 456, Cusco',
-  'fecha_preferida': '2026-06-20',
-  'hora_preferida': '10:00',
-  'notas_disponibilidad': 'Solo disponible en las mañanas',
-});
-final uuid = response['ticket'] as String;
-```
+// Widget para crear solicitud
+Column(
+  children: [
+    TextField(
+      controller: descripcionController,
+      decoration: InputDecoration(labelText: 'Descripción del problema'),
+    ),
+    SwitchListTile(
+      title: Text('¿Es urgente?'),
+      subtitle: Text('Marcar si necesita atención inmediata'),
+      value: esUrgente,
+      onChanged: (value) => setState(() => esUrgente = value),
+      activeColor: Colors.red,
+    ),
+  ],
+)
 
-####  JavaScript:
-```javascript
-const response = await api.post('/solicitudes', {
-  id_cliente: 1,
-  descripcion_problema: 'Necesito instalar un tablero eléctrico nuevo',
-  direccion_servicio: 'Av. Los Incas 456, Cusco',
-  fecha_preferida: '2026-06-20',
-  hora_preferida: '10:00',
-  notas_disponibilidad: 'Solo disponible en las mañanas',
-});
-const uuid = response.ticket;
-```
-
----
-
-### ✅ 5.2 Validar Hora Preferida (Admin)
-
-**Endpoint:** `GET /api/solicitudes/{uuid}/validar-hora-preferida`
-
-**Usuario:** ADMINISTRADOR
-
-**Descripción:** Valida si la hora preferida del cliente tiene conflicto con el técnico asignado.
-
-**Response SIN Conflicto (200 OK):**
-```json
-{
-  "mensaje": "Validación completada.",
-  "data": {
-    "tiene_conflicto": false,
-    "mensaje": "No hay conflictos de coordinación",
-    "fecha_preferida": "2026-06-20",
-    "hora_preferida": "10:00"
-  }
-}
-```
-
-**Response CON Conflicto (200 OK):**
-```json
-{
-  "mensaje": "Validación completada.",
-  "data": {
-    "tiene_conflicto": true,
-    "mensaje": "El técnico ya tiene una visita coordinada a las 14:30 del mismo día en Av. Los Incas 456",
-    "fecha_preferida": "2026-06-20",
-    "hora_preferida": "10:00",
-    "hora_conflicto": "14:30:00",
-    "direccion_conflicto": "Av. Los Incas 456"
-  }
-}
-```
-
-#### 🟢 Java:
-```java
-String response = ApiClient.get("/solicitudes/" + uuid + "/validar-hora-preferida");
-JsonObject json = JsonParser.parseString(response).getAsJsonObject();
-boolean tieneConflicto = json.getAsJsonObject("data").get("tiene_conflicto").getAsBoolean();
-
-if (tieneConflicto) {
-    String mensaje = json.getAsJsonObject("data").get("mensaje").getAsString();
-    System.out.println("Conflicto: " + mensaje);
-}
-```
-
-#### 🔵 Flutter:
-```dart
-final response = await ApiClient.get('/solicitudes/$uuid/validar-hora-preferida');
-final data = response['data'] as Map<String, dynamic>;
-final tieneConflicto = data['tiene_conflicto'] as bool;
-
-if (tieneConflicto) {
-  final mensaje = data['mensaje'] as String;
-  print('Conflicto: $mensaje');
-}
-```
-
-#### 🟡 JavaScript:
-```javascript
-const response = await api.get(`/solicitudes/${uuid}/validar-hora-preferida`);
-const { tiene_conflicto, mensaje } = response.data;
-
-if (tiene_conflicto) {
-  alert(`Conflicto: ${mensaje}`);
-}
-```
-
----
-
-### 👷 5.3 Asignar Técnico (+ Coordinación)
-
-**Endpoint:** `PATCH /api/solicitudes/{uuid}/tecnico`
-
-**Usuario:** ADMIN
-
-**Request (usando hora preferida del cliente):**
-```json
-{
-  "id_tecnico": 1,
-  "fecha_coordinada": "2026-06-20",
-  "hora_coordinada": "10:00"
-}
-```
-
-**Request (coordinando otra hora si hay conflicto):**
-```json
-{
-  "id_tecnico": 1,
-  "fecha_coordinada": "2026-06-21",
-  "hora_coordinada": "15:00"
-}
-```
-
-**Response éxito (200 OK):**
-```json
-{
-  "mensaje": "Técnico asignado exitosamente.",
-  "data": {
-    "uuid_solicitud": "...",
-    "id_tecnico": 1,
-    "estado": "ASIGNADA",
-    "fecha_coordinada": "2026-06-20",
-    "hora_coordinada": "10:00:00"
-  }
-}
-```
-
-**Response error conflicto (409 Conflict):**
-```json
-{
-  "mensaje": "Error al asignar técnico.",
-  "error": "El técnico ya tiene una visita coordinada a las 10:00 del mismo día en Av. Los Incas 456, Cusco"
-}
-```
-
-#### 🟢 Java:
-```java
-Map<String, Object> data = new HashMap<>();
-data.put("id_tecnico", 1);
-data.put("fecha_coordinada", "2026-06-20");
-data.put("hora_coordinada", "10:00");
-
-try {
-    String response = ApiClient.patchJson("/solicitudes/" + uuid + "/tecnico", data);
-} catch (IOException e) {
-    // Manejar error 409 (conflicto de horario)
-}
-```
-
-#### 🔵 Flutter:
-```dart
-try {
-  final response = await ApiClient.patch('/solicitudes/$uuid/tecnico', {
-    'id_tecnico': 1,
-    'fecha_coordinada': '2026-06-20',
-    'hora_coordinada': '10:00',
+// Al enviar
+void crearSolicitud() async {
+  final response = await api.post('/solicitudes', {
+    'id_cliente': 1,
+    'descripcion_problema': descripcionController.text,
+    'direccion_servicio': direccionController.text,
+    'es_urgente': esUrgente,
   });
-} on ApiException catch (e) {
-  if (e.statusCode == 409) {
-    print('Conflicto de horario: ${e.message}');
-  }
-}
-```
-
-#### 🟡 JavaScript:
-```javascript
-try {
-  const response = await api.patch(`/solicitudes/${uuid}/tecnico`, {
-    id_tecnico: 1,
-    fecha_coordinada: '2026-06-20',
-    hora_coordinada: '10:00',
-  });
-} catch (error) {
-  if (error.statusCode === 409) {
-    alert('Conflicto de horario: ' + error.message);
-  }
-}
-```
-
----
-
-## 6. Módulo Evidencias
-
-### 📸 6.1 Subir Evidencia
-
-**Endpoint:** `POST /api/evidencias/subir`
-
-**Usuario:** ADMIN, TECNICO
-
-**Content-Type:** `multipart/form-data`
-
-**Request (multipart/form-data):**
-```
-uuid_solicitud: 019ec9c0-c3e7-71b4-8736-305287a7e91b
-tipo_evidencia: FOTO_DESPUES
-archivo: [archivo.jpg]
-```
-
-**Tipos permitidos:** `FOTO_ANTES`, `FOTO_DESPUES`, `FIRMA_CLIENTE`, `OTRO`
-
-**Response (201 Created):**
-```json
-{
-  "mensaje": "Evidencia subida y registrada exitosamente.",
-  "data": {
-    "id_evidencia": 1,
-    "uuid_solicitud": "...",
-    "tipo_evidencia": "FOTO_DESPUES",
-    "url_archivo": "http://127.0.0.1:8000/storage/evidencias/abc123.jpg",
-    "fecha_subida": "2026-06-15 17:00:00"
-  }
-}
-```
-
-#### 🟢 Java (OkHttp Multipart):
-```java
-public static String postMultipart(String endpoint, Map<String, String> fields, File file) throws IOException {
-    MultipartBody.Builder builder = new MultipartBody.Builder()
-        .setType(MultipartBody.FORM);
-    
-    for (Map.Entry<String, String> entry : fields.entrySet()) {
-        builder.addFormDataPart(entry.getKey(), entry.getValue());
-    }
-    
-    if (file != null) {
-        builder.addFormDataPart("archivo", file.getName(),
-            RequestBody.create(file, MediaType.parse("image/*")));
-    }
-    
-    Request.Builder requestBuilder = new Request.Builder()
-        .url(BASE_URL + endpoint)
-        .addHeader("Accept", "application/json")
-        .post(builder.build());
-    
-    if (authToken != null) {
-        requestBuilder.addHeader("Authorization", "Bearer " + authToken);
-    }
-    
-    Request request = requestBuilder.build();
-    try (Response response = client.newCall(request).execute()) {
-        return response.body().string();
-    }
 }
 
-File archivo = new File("/ruta/a/foto.jpg");
-
-Map<String, String> fields = new HashMap<>();
-fields.put("uuid_solicitud", uuid);
-fields.put("tipo_evidencia", "FOTO_DESPUES");
-
-String response = ApiClient.postMultipart("/evidencias/subir", fields, archivo);
-```
-
-#### 🔵 Flutter:
-```dart
-static Future<Map<String, dynamic>> uploadFile(
-    String endpoint,
-    Map<String, String> fields,
-    String filePath,
-) async {
-    final uri = Uri.parse('$baseUrl$endpoint');
-    final request = http.MultipartRequest('POST', uri)
-      ..headers.addAll(_headers);
-    
-    fields.forEach((key, value) {
-      request.fields[key] = value;
-    });
-    
-    request.files.add(await http.MultipartFile.fromPath('archivo', filePath));
-    
-    final streamedResponse = await request.send();
-    final response = await http.Response.fromStream(streamedResponse);
-    
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return data;
-    } else {
-      throw ApiException(
-        message: data['mensaje'] ?? 'Error desconocido',
-        statusCode: response.statusCode,
-      );
-    }
-}
-
-final response = await ApiClient.uploadFile(
-  '/evidencias/subir',
-  {
-    'uuid_solicitud': uuid,
-    'tipo_evidencia': 'FOTO_DESPUES',
+// Widget para mostrar lista de solicitudes
+ListView.builder(
+  itemCount: solicitudes.length,
+  itemBuilder: (context, index) {
+    final solicitud = solicitudes[index];
+    return Card(
+      color: solicitud['es_urgente'] ? Colors.red[50] : null,
+      child: ListTile(
+        leading: solicitud['es_urgente'] 
+            ? Icon(Icons.warning, color: Colors.red)
+            : Icon(Icons.assignment),
+        title: Text(solicitud['descripcion_problema']),
+        trailing: Chip(
+          label: Text(solicitud['estado']),
+        ),
+      ),
+    );
   },
-  '/ruta/a/foto.jpg',
-);
-```
-
-####  JavaScript:
-```javascript
-async uploadFile(endpoint, formData) {
-    const headers = { 'Accept': 'application/json' };
-    if (this.authToken) {
-      headers['Authorization'] = `Bearer ${this.authToken}`;
-    }
-    
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      method: 'POST',
-      headers,
-      body: formData,
-    });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new ApiError(data.mensaje || 'Error', response.status);
-    }
-    
-    return data;
-}
-
-const formData = new FormData();
-formData.append('uuid_solicitud', uuid);
-formData.append('tipo_evidencia', 'FOTO_DESPUES');
-formData.append('archivo', fileInput.files[0]);
-
-const response = await api.uploadFile('/evidencias/subir', formData);
+)
 ```
 
 ---
 
-## 7. Módulo Finanzas
+## 2. Notas en Evidencias
 
-### 💳 7.1 Registrar Adelanto
+### 🎯 ¿Qué hace?
+Permite al técnico agregar observaciones o notas al subir evidencias (fotos).
 
-**Endpoint:** `POST /api/finanzas/{uuid}/adelanto`
+### 📡 Endpoints
 
-**Usuario:** CLIENTE
+#### **Subir evidencia con observaciones (simple)**
+```http
+POST /api/evidencias/subir
+Authorization: Bearer {TOKEN_TECNICO}
+Content-Type: multipart/form-data
 
-**Request:**
+uuid_solicitud: uuid-123
+tipo_evidencia: FOTO_ANTES
+archivo: [archivo.jpg]
+observaciones: Tablero quemado, se observa daño severo en los breakers
+```
+
+**Respuesta (201):**
 ```json
 {
-  "monto_pagado": 200.00,
-  "metodo_pago": "YAPE",
-  "nro_operacion": "351-98765432",
-  "url_comprobante": "https://storage.local/vouchers/voucher123.jpg"
+  "mensaje": "Evidencia subida exitosamente.",
+  "data": {
+    "total_subidas": 1,
+    "evidencias": [
+      {
+        "id_evidencia": 1,
+        "tipo_evidencia": "FOTO_ANTES",
+        "url_archivo": "https://res.cloudinary.com/...",
+        "observaciones": "Tablero quemado, se observa daño severo en los breakers"
+      }
+    ]
+  }
 }
 ```
 
-**Response (201 Created):**
+#### **Subir múltiples evidencias**
+```http
+POST /api/evidencias/subir
+Authorization: Bearer {TOKEN_TECNICO}
+Content-Type: multipart/form-data
+
+uuid_solicitud: uuid-123
+archivos[0]: [foto1.jpg]
+archivos[1]: [foto2.jpg]
+tipos_evidencia[0]: FOTO_ANTES
+tipos_evidencia[1]: FOTO_DESPUES
+observaciones: Trabajo completado exitosamente
+```
+
+#### **Ver evidencias de una solicitud**
+```http
+GET /api/evidencias/solicitud/{uuid}
+Authorization: Bearer {TOKEN_ADMIN}
+```
+
+**Respuesta (200):**
 ```json
 {
-  "mensaje": "Adelanto registrado exitosamente. Su solicitud pasará a revisión de pago.",
+  "uuid_solicitud": "uuid-123",
+  "total_evidencias": 2,
+  "evidencias": [
+    {
+      "id_evidencia": 1,
+      "tipo_evidencia": "FOTO_ANTES",
+      "url_archivo": "https://res.cloudinary.com/...",
+      "observaciones": "Tablero quemado",
+      "fecha_subida": "2026-07-09 10:30:00"
+    }
+  ]
+}
+```
+
+### 🎨 Frontend (Flutter)
+
+```dart
+// Widget para subir evidencia
+Column(
+  children: [
+    TextField(
+      controller: observacionesController,
+      decoration: InputDecoration(
+        labelText: 'Observaciones (opcional)',
+        hintText: 'Describe lo que muestra la foto...',
+      ),
+      maxLines: 3,
+    ),
+    ElevatedButton(
+      onPressed: () => _subirEvidencia(),
+      child: Text('Subir Evidencia'),
+    ),
+  ],
+)
+
+// Al enviar
+void _subirEvidencia() async {
+  final request = http.MultipartRequest(
+    Uri.parse('${baseUrl}/api/evidencias/subir'),
+    headers: {'Authorization': 'Bearer $token'},
+  );
+  
+  request.fields['uuid_solicitud'] = solicitudUuid;
+  request.fields['tipo_evidencia'] = 'FOTO_ANTES';
+  request.fields['observaciones'] = observacionesController.text;
+  request.files.add(await http.MultipartFile.fromPath(
+    'archivo',
+    selectedImage.path,
+  ));
+  
+  final response = await request.send();
+}
+
+// Widget para mostrar evidencias
+ListView.builder(
+  itemCount: evidencias.length,
+  itemBuilder: (context, index) {
+    final evidencia = evidencias[index];
+    return Card(
+      child: Column(
+        children: [
+          Image.network(evidencia['url_archivo']),
+          if (evidencia['observaciones'] != null)
+            Padding(
+              padding: EdgeInsets.all(8.0),
+              child: Text(
+                evidencia['observaciones'],
+                style: TextStyle(fontStyle: FontStyle.italic),
+              ),
+            ),
+        ],
+      ),
+    );
+  },
+)
+```
+
+---
+
+## 3. Timeline de Cambios de Estado
+
+### 🎯 ¿Qué hace?
+Muestra el historial completo de cambios de estado de una solicitud con fechas y usuarios.
+
+### 📡 Endpoints
+
+#### **Ver detalle de solicitud con timeline**
+```http
+GET /api/solicitudes/{uuid}
+Authorization: Bearer {TOKEN_ADMIN}
+```
+
+**Respuesta (200):**
+```json
+{
+  "solicitud": {
+    "uuid_solicitud": "uuid-123",
+    "estado": "EN_PROCESO",
+    "es_urgente": true
+  },
+  "timeline": [
+    {
+      "estado_anterior": null,
+      "estado_nuevo": "PENDIENTE",
+      "fecha_cambio": "2026-07-09 10:00:00",
+      "usuario_accion": "Maria Perez",
+      "rol_usuario": "CLIENTE"
+    },
+    {
+      "estado_anterior": "PENDIENTE",
+      "estado_nuevo": "ASIGNADA",
+      "fecha_cambio": "2026-07-09 11:30:00",
+      "usuario_accion": "Carlos Admin",
+      "rol_usuario": "ADMINISTRADOR"
+    },
+    {
+      "estado_anterior": "ASIGNADA",
+      "estado_nuevo": "COTIZADA",
+      "fecha_cambio": "2026-07-09 14:00:00",
+      "usuario_accion": "Juan Tecnico",
+      "rol_usuario": "TECNICO"
+    }
+  ]
+}
+```
+
+### 🎨 Frontend (Flutter)
+
+```dart
+// Widget de Timeline
+Widget _buildTimeline(List<dynamic> timeline) {
+  return Column(
+    children: timeline.map((item) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            children: [
+              Icon(Icons.circle, size: 12),
+              Container(
+                width: 2,
+                height: 50,
+                color: Colors.grey,
+              ),
+            ],
+          ),
+          SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${item['estado_anterior'] ?? 'Inicio'} → ${item['estado_nuevo']}',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  '${item['usuario_accion']} (${item['rol_usuario']})',
+                  style: TextStyle(color: Colors.grey),
+                ),
+                Text(
+                  item['fecha_cambio'],
+                  style: TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }).toList(),
+  );
+}
+```
+
+---
+
+## 4. Liquidación 100% con Mínimo 30%
+
+### 🎯 ¿Qué hace?
+El cliente puede pagar desde el 30% hasta el 100% del total. Si paga el 100%, la cotización se marca como LIQUIDADA.
+
+### 📡 Endpoints
+
+#### **Cliente paga adelanto (30% - 100%)**
+```http
+POST /api/finanzas/{uuid}/adelanto
+Authorization: Bearer {TOKEN_CLIENTE}
+Content-Type: application/json
+
+{
+  "monto_pagado": 1249.50,
+  "metodo_pago": "YAPE",
+  "nro_operacion": "351-98765432"
+}
+```
+
+**Respuesta (201):**
+```json
+{
+  "mensaje": "Adelanto registrado exitosamente.",
   "pago": {
     "id_pago": 1,
-    "uuid_solicitud": "...",
-    "monto_pagado": "200.00",
-    "metodo_pago": "YAPE",
+    "monto_pagado": 1249.50,
     "estado_pago": "PENDIENTE_APROBACION",
     "tipo_pago": "ADELANTO"
   },
   "nuevo_estado_solicitud": "REVISION_PAGO",
-  "maximo_adelanto_permitido": 324.50
+  "monto_minimo_permitido": 374.85,
+  "monto_maximo_permitido": 1249.50,
+  "porcentaje_pagado": "100.00%",
+  "es_liquidacion_total": true
 }
 ```
 
-#### 🟢 Java:
-```java
-Map<String, Object> data = new HashMap<>();
-data.put("monto_pagado", 200.00);
-data.put("metodo_pago", "YAPE");
-data.put("nro_operacion", "351-98765432");
-data.put("url_comprobante", "https://...");
+#### **Pago menor al 30% (Error)**
+```http
+POST /api/finanzas/{uuid}/adelanto
+Authorization: Bearer {TOKEN_CLIENTE}
+Content-Type: application/json
 
-String response = ApiClient.postJson("/finanzas/" + uuid + "/adelanto", data);
+{
+  "monto_pagado": 200.00,
+  "metodo_pago": "YAPE",
+  "nro_operacion": "351-11122233"
+}
 ```
 
-#### 🔵 Flutter:
+**Respuesta (400):**
+```json
+{
+  "mensaje": "Error al registrar adelanto.",
+  "error": "El adelanto mínimo es el 30% del total (S/ 374.85). Monto enviado: S/ 200.00"
+}
+```
+
+### 🎨 Frontend (Flutter)
+
 ```dart
-final response = await ApiClient.post('/finanzas/$uuid/adelanto', {
-  'monto_pagado': 200.00,
-  'metodo_pago': 'YAPE',
-  'nro_operacion': '351-98765432',
-  'url_comprobante': 'https://...',
-});
-```
+// Widget para pago de adelanto
+class PagoAdelantoScreen extends StatefulWidget {
+  final double totalCotizacion;
+  
+  @override
+  _PagoAdelantoScreenState createState() => _PagoAdelantoScreenState();
+}
 
-#### 🟡 JavaScript:
-```javascript
-const response = await api.post(`/finanzas/${uuid}/adelanto`, {
-  monto_pagado: 200.00,
-  metodo_pago: 'YAPE',
-  nro_operacion: '351-98765432',
-  url_comprobante: 'https://...',
-});
+class _PagoAdelantoScreenState extends State<PagoAdelantoScreen> {
+  final _controller = TextEditingController();
+  double get montoMinimo => widget.totalCotizacion * 0.30;
+  double get montoMaximo => widget.totalCotizacion;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text('Total: S/ ${widget.totalCotizacion.toStringAsFixed(2)}'),
+        TextField(
+          controller: _controller,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: 'Monto a pagar',
+            helperText: 'Mínimo: S/ ${montoMinimo.toStringAsFixed(2)} (30%)',
+            hintText: 'Puede liquidar el 100%: S/ ${montoMaximo.toStringAsFixed(2)}',
+          ),
+        ),
+        ElevatedButton(
+          onPressed: () => _pagarAdelanto(),
+          child: Text('Pagar Adelanto'),
+        ),
+      ],
+    );
+  }
+  
+  void _pagarAdelanto() async {
+    final monto = double.parse(_controller.text);
+    
+    if (monto < montoMinimo) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('El monto mínimo es S/ ${montoMinimo.toStringAsFixed(2)}')),
+      );
+      return;
+    }
+    
+    final response = await api.post('/finanzas/$uuid/adelanto', {
+      'monto_pagado': monto,
+      'metodo_pago': 'YAPE',
+      'nro_operacion': '351-12345678',
+    });
+    
+    if (response['es_liquidacion_total']) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text('¡Liquidación Total!'),
+          content: Text('Has pagado el 100% de la cotización.'),
+        ),
+      );
+    }
+  }
+}
 ```
 
 ---
 
-## 8. Manejo de Errores
+## 5. Validación Flexible de Comprobantes
 
-### 🚨 Códigos HTTP Estándar
+### 🎯 ¿Qué hace?
+El cliente debe enviar al menos uno: número de operación O comprobante (foto). Puede enviar ambos.
 
-| Código | Significado | Acción Frontend |
-|--------|-------------|-----------------|
-| `200 OK` | Éxito | Mostrar datos |
-| `201 Created` | Recurso creado | Mostrar confirmación |
-| `400 Bad Request` | Error de negocio | Mostrar mensaje de error |
-| `401 Unauthorized` | Token inválido/expirado | Redirigir a login |
-| `403 Forbidden` | Sin permisos | Mostrar "Acceso denegado" |
-| `404 Not Found` | Recurso no existe | Mostrar "No encontrado" |
-| `409 Conflict` | Conflicto (ej. horario) | Mostrar mensaje específico |
-| `422 Unprocessable` | Error de validación | Mostrar errores por campo |
-| `500 Internal Error` | Error del servidor | Mostrar "Error interno" |
+### 📡 Endpoints
 
-### 📋 Formato de Errores
+#### **Pago con número de operación (JSON)**
+```http
+POST /api/finanzas/pagar
+Authorization: Bearer {TOKEN_TECNICO}
+Content-Type: application/json
 
-**Error de validación (422):**
+{
+  "uuid_solicitud": "uuid-123",
+  "monto_pagado": 500.00,
+  "metodo_pago": "TRANSFERENCIA",
+  "nro_operacion": "002-99887766"
+}
+```
+
+#### **Pago con comprobante (multipart/form-data)**
+```http
+POST /api/finanzas/pagar
+Authorization: Bearer {TOKEN_TECNICO}
+Content-Type: multipart/form-data
+
+uuid_solicitud: uuid-123
+monto_pagado: 500.00
+metodo_pago: YAPE
+comprobante: [screenshot.jpg]
+```
+
+#### **Pago sin pruebas (Error)**
+```http
+POST /api/finanzas/pagar
+Authorization: Bearer {TOKEN_TECNICO}
+Content-Type: application/json
+
+{
+  "uuid_solicitud": "uuid-123",
+  "monto_pagado": 500.00,
+  "metodo_pago": "YAPE"
+}
+```
+
+**Respuesta (422):**
 ```json
 {
   "mensaje": "Error de validación.",
   "errores": {
-    "email": ["El correo ya está registrado."],
-    "password": ["La contraseña debe tener al menos 6 caracteres."]
+    "comprobante": ["Debe ingresar el número de operación o subir el comprobante."]
   }
 }
 ```
 
-**Error de negocio (400/409):**
+### 🎨 Frontend (Flutter)
+
+```dart
+// Widget para pago con validación flexible
+class PagoScreen extends StatefulWidget {
+  @override
+  _PagoScreenState createState() => _PagoScreenState();
+}
+
+class _PagoScreenState extends State<PagoScreen> {
+  final _nroOperacionController = TextEditingController();
+  File? _comprobanteFile;
+  
+  bool get _puedeEnviar => 
+      _nroOperacionController.text.isNotEmpty || 
+      _comprobanteFile != null;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        TextField(
+          controller: _nroOperacionController,
+          decoration: InputDecoration(
+            labelText: 'Número de operación',
+            helperText: 'O sube un comprobante',
+          ),
+        ),
+        ElevatedButton(
+          onPressed: () => _seleccionarImagen(),
+          child: Text('Subir Comprobante'),
+        ),
+        if (_comprobanteFile != null)
+          Image.file(_comprobanteFile!),
+        ElevatedButton(
+          onPressed: _puedeEnviar ? () => _registrarPago() : null,
+          child: Text('Registrar Pago'),
+        ),
+      ],
+    );
+  }
+  
+  void _registrarPago() async {
+    if (_comprobanteFile != null) {
+      // Enviar como multipart
+      final request = http.MultipartRequest(
+        Uri.parse('${baseUrl}/api/finanzas/pagar'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      request.fields['uuid_solicitud'] = uuid;
+      request.fields['monto_pagado'] = '500.00';
+      request.fields['metodo_pago'] = 'YAPE';
+      request.files.add(await http.MultipartFile.fromPath(
+        'comprobante',
+        _comprobanteFile!.path,
+      ));
+      await request.send();
+    } else {
+      // Enviar como JSON
+      await api.post('/finanzas/pagar', {
+        'uuid_solicitud': uuid,
+        'monto_pagado': 500.00,
+        'metodo_pago': 'TRANSFERENCIA',
+        'nro_operacion': _nroOperacionController.text,
+      });
+    }
+  }
+}
+```
+
+---
+
+## 6. Cloudinary para Comprobantes
+
+### 🎯 ¿Qué hace?
+Los comprobantes de pago se suben automáticamente a Cloudinary y se guarda la URL en la base de datos.
+
+### 📡 Endpoints
+
+#### **Subir adelanto con comprobante**
+```http
+POST /api/finanzas/{uuid}/adelanto
+Authorization: Bearer {TOKEN_CLIENTE}
+Content-Type: multipart/form-data
+
+monto_pagado: 500.00
+metodo_pago: YAPE
+comprobante: [screenshot.jpg]
+```
+
+**Respuesta (201):**
 ```json
 {
-  "mensaje": "Error al cambiar el estado.",
-  "error": "No se puede cambiar el estado de FINALIZADA a PENDIENTE."
+  "mensaje": "Adelanto registrado exitosamente.",
+  "pago": {
+    "id_pago": 1,
+    "monto_pagado": 500.00,
+    "url_comprobante": "https://res.cloudinary.com/dfwocmvri/image/upload/v1234567/sigesto/pagos/abc123.jpg"
+  }
 }
 ```
 
-### 🟢 Java - Manejo de errores:
-```java
-try {
-    String response = ApiClient.postJson(endpoint, data);
-    // Procesar respuesta exitosa
-} catch (IOException e) {
-    // Error de red
-    showError("Error de conexión");
-}
-```
+### 🎨 Frontend (Flutter)
 
-### 🔵 Flutter - Manejo de errores:
 ```dart
-try {
-  final response = await ApiClient.post(endpoint, data);
-  // Procesar respuesta exitosa
-} on ApiException catch (e) {
-  switch (e.statusCode) {
-    case 401:
-      // Redirigir a login
-      Navigator.pushReplacementNamed(context, '/login');
-      break;
-    case 403:
-      showError('No tienes permisos para esta acción');
-      break;
-    case 422:
-      // Mostrar errores por campo
-      final errores = e.errors as Map<String, dynamic>;
-      errores.forEach((campo, mensajes) {
-        print('$campo: ${mensajes.join(", ")}');
-      });
-      break;
-    default:
-      showError(e.message);
-  }
-}
-```
-
-### 🟡 JavaScript - Manejo de errores:
-```javascript
-try {
-  const response = await api.post(endpoint, data);
-  // Procesar respuesta exitosa
-} catch (error) {
-  switch (error.statusCode) {
-    case 401:
-      window.location.href = '/login';
-      break;
-    case 403:
-      alert('No tienes permisos para esta acción');
-      break;
-    case 422:
-      // Mostrar errores por campo
-      Object.entries(error.errors).forEach(([campo, mensajes]) => {
-        mostrarErrorCampo(campo, mensajes.join(', '));
-      });
-      break;
-    case 409:
-      alert(error.message);
-      break;
-    default:
-      alert('Error: ' + error.message);
-  }
+// El frontend solo necesita subir el archivo, Cloudinary se maneja en el backend
+void _subirAdelantoConComprobante() async {
+  final request = http.MultipartRequest(
+    Uri.parse('${baseUrl}/api/finanzas/$uuid/adelanto'),
+    headers: {'Authorization': 'Bearer $token'},
+  );
+  
+  request.fields['monto_pagado'] = '500.00';
+  request.fields['metodo_pago'] = 'YAPE';
+  request.files.add(await http.MultipartFile.fromPath(
+    'comprobante',
+    selectedImage.path,
+  ));
+  
+  final response = await request.send();
+  final data = jsonDecode(response.stream.toString());
+  
+  // La URL de Cloudinary viene en la respuesta
+  print('URL del comprobante: ${data['pago']['url_comprobante']}');
 }
 ```
 
 ---
 
-## 🎯 Flujo Completo de Ejemplo (ACTUALIZADO)
+## 7. Materiales del Cliente
 
-### Caso: Cliente solicita servicio → propone hora → paga → técnico trabaja
+### 🎯 ¿Qué hace?
+Permite al cliente indicar qué materiales ya tiene disponibles para que el técnico sepa qué debe llevar.
 
+### 📡 Endpoints
+
+#### **Crear solicitud con materiales**
+```http
+POST /api/solicitudes
+Authorization: Bearer {TOKEN_CLIENTE}
+Content-Type: application/json
+
+{
+  "id_cliente": 1,
+  "descripcion_problema": "Necesito instalar un tablero eléctrico",
+  "direccion_servicio": "Av. Los Incas 456",
+  "materiales_cliente": "Ya tengo el tablero de 8 polos y 5 rollos de cable THW 2.5mm. Solo necesito mano de obra."
+}
 ```
-1. Cliente: POST /auth/login → obtener TOKEN_CLIENTE
-2. Cliente: POST /solicitudes → crear solicitud CON fecha/hora preferida (PENDIENTE)
-   {
-     "descripcion_problema": "...",
-     "direccion_servicio": "...",
-     "fecha_preferida": "2026-06-20",
-     "hora_preferida": "10:00"
-   }
-3. Admin: POST /auth/login → obtener TOKEN_ADMIN
-4. Admin: GET /solicitudes/{uuid}/validar-hora-preferida → validar si hay conflicto
-5. Admin: PATCH /solicitudes/{uuid}/tecnico → asignar técnico (ASIGNADA)
-   - Si NO hay conflicto: usar fecha/hora preferida del cliente
-   - Si HAY conflicto: coordinar otra hora
-6. Técnico: POST /auth/login → obtener TOKEN_TECNICO
-7. Técnico: PUT /solicitudes/{uuid} → armar cotización (COTIZADA)
-8. Cliente: GET /finanzas/cuenta-bancaria → ver datos bancarios
-9. Cliente: POST /finanzas/{uuid}/adelanto → pagar 50% (REVISION_PAGO)
-10. Admin: PATCH /finanzas/{id_pago}/verificar → aprobar pago (APROBADA)
-11. Técnico: PATCH /solicitudes/{uuid}/estado → iniciar trabajo (EN_PROCESO)
-12. Técnico: POST /evidencias/subir → subir foto antes
-13. Técnico: PATCH /solicitudes/{uuid}/estado → finalizar (FINALIZADA)
-14. Técnico: POST /evidencias/subir → subir foto después
-15. Técnico: POST /finanzas/pagar → cobrar saldo (PAGADA)
+
+**Respuesta (201):**
+```json
+{
+  "mensaje": "Solicitud generada con éxito.",
+  "data": {
+    "uuid_solicitud": "uuid-...",
+    "estado": "PENDIENTE",
+    "materiales_cliente": "Ya tengo el tablero de 8 polos y 5 rollos de cable THW 2.5mm..."
+  }
+}
+```
+
+#### **Ver solicitud con materiales (Técnico)**
+```http
+GET /api/solicitudes/asignadas
+Authorization: Bearer {TOKEN_TECNICO}
+```
+
+**Respuesta (200):**
+```json
+{
+  "data": [
+    {
+      "uuid_solicitud": "uuid-123",
+      "estado": "ASIGNADA",
+      "descripcion_problema": "Necesito instalar un tablero...",
+      "materiales_cliente": "Ya tengo el tablero de 8 polos...",
+      "cotizacion": {...}
+    }
+  ]
+}
+```
+
+### 🎨 Frontend (Flutter)
+
+```dart
+// Widget para crear solicitud con materiales
+Column(
+  children: [
+    TextField(
+      controller: descripcionController,
+      decoration: InputDecoration(labelText: 'Descripción del problema'),
+    ),
+    TextField(
+      controller: materialesController,
+      decoration: InputDecoration(
+        labelText: 'Materiales que ya tiene (opcional)',
+        hintText: 'Ej: Ya tengo el tablero, cables y tomacorrientes...',
+        helperText: 'Si es especialista, indique qué materiales ya tiene',
+      ),
+      maxLines: 4,
+    ),
+  ],
+)
+
+// Widget para técnico ver materiales del cliente
+Card(
+  child: Column(
+    children: [
+      Text('Descripción: ${solicitud['descripcion_problema']}'),
+      if (solicitud['materiales_cliente'] != null)
+        Container(
+          padding: EdgeInsets.all(8),
+          color: Colors.blue[50],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Materiales del cliente:', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text(solicitud['materiales_cliente']),
+            ],
+          ),
+        ),
+    ],
+  ),
+)
 ```
 
 ---
 
-## 📝 Notas Importantes
+## 8. Tipos de Trabajo y Sugerencias
 
-### 🔒 Seguridad
-- **NUNCA** guardar tokens en texto plano
-- Java: Usar `SharedPreferences` con encriptación
-- Flutter: Usar `flutter_secure_storage`
-- JS: Usar `localStorage` o `sessionStorage`
+### 🎯 ¿Qué hace?
+El técnico selecciona un tipo de trabajo y el sistema sugiere automáticamente los materiales y servicios necesarios del catálogo.
 
-### 🌐 URLs según entorno
+### 📡 Endpoints
 
-| Entorno | Java | Flutter | JS |
-|---------|------|---------|-----|
-| Emulador Android | `http://10.0.2.2:8000/api` | `http://10.0.2.2:8000/api` | - |
-| Simulator iOS | - | `http://localhost:8000/api` | - |
-| Dispositivo físico | `http://TU_IP:8000/api` | `http://TU_IP:8000/api` | - |
-| Producción | `https://api.dominio.com/api` | Igual | Igual |
+#### **Listar tipos de trabajo**
+```http
+GET /api/catalogo/tipos-trabajo
+Authorization: Bearer {TOKEN_TECNICO}
+```
 
-### ⏱️ Timeouts Recomendados
-- **Login/Registro:** 10 segundos
-- **Consultas normales:** 15 segundos
-- **Subida de archivos:** 60 segundos
+**Respuesta (200):**
+```json
+{
+  "mensaje": "Tipos de trabajo obtenidos exitosamente.",
+  "data": {
+    "total": 4,
+    "tipos_trabajo": [
+      {
+        "id": 1,
+        "nombre": "Instalación de tablero eléctrico",
+        "descripcion": "Instalación completa de tablero de distribución"
+      },
+      {
+        "id": 2,
+        "nombre": "Reparación de cortocircuito",
+        "descripcion": "Diagnóstico y reparación de fallas"
+      }
+    ]
+  }
+}
+```
 
-### 📅 Campos de Coordinación
+#### **Obtener materiales sugeridos**
+```http
+GET /api/catalogo/tipos-trabajo/1/materiales-sugeridos
+Authorization: Bearer {TOKEN_TECNICO}
+```
 
-| Campo | Quién lo llena | Cuándo |
-|-------|----------------|--------|
-| `fecha_preferida` | Cliente | Al crear solicitud (opcional) |
-| `hora_preferida` | Cliente | Al crear solicitud (opcional) |
-| `notas_disponibilidad` | Cliente | Al crear solicitud (opcional) |
-| `fecha_coordinada` | Admin | Al asignar técnico |
-| `hora_coordinada` | Admin | Al asignar técnico |
-| `notas_coordinacion` | Admin/Técnico | Después de asignar |
+**Respuesta (200):**
+```json
+{
+  "mensaje": "Materiales sugeridos obtenidos exitosamente.",
+  "data": {
+    "tipo_trabajo": {
+      "id": 1,
+      "nombre": "Instalación de tablero eléctrico"
+    },
+    "total_sugerido": 1460.00,
+    "items_sugeridos": [
+      {
+        "id_item": 2,
+        "sku_codigo": "TABLERO-8P",
+        "nombre": "Tablero de Distribución 8 Polos",
+        "tipo_item": "MATERIAL",
+        "precio_ref": 280.00,
+        "cantidad_sugerida": 1,
+        "unidad_medida": "UNIDAD",
+        "obligatorio": true,
+        "subtotal_sugerido": 280.00
+      },
+      {
+        "id_item": 1,
+        "sku_codigo": "CABLE-2.5MM",
+        "nombre": "Cable THW 2.5mm",
+        "tipo_item": "MATERIAL",
+        "precio_ref": 135.00,
+        "cantidad_sugerida": 5,
+        "unidad_medida": "ROLLOS",
+        "obligatorio": true,
+        "subtotal_sugerido": 675.00
+      },
+      {
+        "id_item": 4,
+        "sku_codigo": "MO-INSTALACION",
+        "nombre": "Mano de Obra: Instalación",
+        "tipo_item": "SERVICIO",
+        "precio_ref": 500.00,
+        "cantidad_sugerida": 1,
+        "unidad_medida": "SERVICIO",
+        "obligatorio": true,
+        "subtotal_sugerido": 500.00
+      }
+    ]
+  }
+}
+```
+
+### 🎨 Frontend (Flutter)
+
+```dart
+// Widget para técnico crear cotización con sugerencias
+class CotizacionScreen extends StatefulWidget {
+  @override
+  _CotizacionScreenState createState() => _CotizacionScreenState();
+}
+
+class _CotizacionScreenState extends State<CotizacionScreen> {
+  List<dynamic> _tiposTrabajo = [];
+  List<dynamic> _itemsSugeridos = [];
+  int? _tipoTrabajoSeleccionado;
+  
+  @override
+  void initState() {
+    super.initState();
+    _cargarTiposTrabajo();
+  }
+  
+  Future<void> _cargarTiposTrabajo() async {
+    final response = await api.get('/catalogo/tipos-trabajo');
+    setState(() {
+      _tiposTrabajo = response['data']['tipos_trabajo'];
+    });
+  }
+  
+  Future<void> _cargarSugerencias(int idTipoTrabajo) async {
+    final response = await api.get('/catalogo/tipos-trabajo/$idTipoTrabajo/materiales-sugeridos');
+    setState(() {
+      _itemsSugeridos = response['data']['items_sugeridos'];
+    });
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        DropdownButton<int>(
+          hint: Text('Seleccione tipo de trabajo'),
+          value: _tipoTrabajoSeleccionado,
+          items: _tiposTrabajo.map((tipo) {
+            return DropdownMenuItem(
+              value: tipo['id'],
+              child: Text(tipo['nombre']),
+            );
+          }).toList(),
+          onChanged: (id) {
+            setState(() => _tipoTrabajoSeleccionado = id);
+            _cargarSugerencias(id!);
+          },
+        ),
+        
+        if (_itemsSugeridos.isNotEmpty)
+          ListView.builder(
+            shrinkWrap: true,
+            itemCount: _itemsSugeridos.length,
+            itemBuilder: (context, index) {
+              final item = _itemsSugeridos[index];
+              return Card(
+                child: ListTile(
+                  title: Text(item['nombre']),
+                  subtitle: Text(
+                    'Cantidad: ${item['cantidad_sugerida']} ${item['unidad_medida']}\n'
+                    'Precio: S/ ${item['precio_ref']}'
+                  ),
+                  trailing: Text('S/ ${item['subtotal_sugerido']}'),
+                ),
+              );
+            },
+          ),
+        
+        ElevatedButton(
+          onPressed: () => _enviarCotizacion(),
+          child: Text('Enviar Cotización'),
+        ),
+      ],
+    );
+  }
+  
+  void _enviarCotizacion() async {
+    final items = _itemsSugeridos.map((item) => {
+      'id_item': item['id_item'],
+      'cantidad': item['cantidad_sugerida'],
+      'precio_aplicado': item['precio_ref'],
+    }).toList();
+    
+    await api.put('/solicitudes/$uuid', {
+      'items': items,
+    });
+  }
+}
+```
 
 ---
 
-**¡Con esta guía actualizada, los 3 equipos de frontend pueden consumir toda la API de forma consistente!** 🚀
+## 9. Servicio de Reportes
+
+### 🎯 ¿Qué hace?
+Proporciona métricas y dashboards para el administrador.
+
+### 📡 Endpoints
+
+#### **Dashboard principal**
+```http
+GET /api/reportes/dashboard
+Authorization: Bearer {TOKEN_ADMIN}
+```
+
+**Respuesta (200):**
+```json
+{
+  "mensaje": "Dashboard obtenido exitosamente.",
+  "data": {
+    "solicitudes": {
+      "total": 25,
+      "hoy": 3,
+      "este_mes": 12,
+      "urgentes": 5,
+      "por_estado": {
+        "PENDIENTE": 3,
+        "ASIGNADA": 2,
+        "COTIZADA": 4,
+        "APROBADA": 8,
+        "EN_PROCESO": 5,
+        "FINALIZADA": 2,
+        "PAGADA": 1
+      }
+    },
+    "finanzas": {
+      "total_ingresos": 15840.50,
+      "ingresos_mes": 4250.00,
+      "ingresos_anio": 15840.50,
+      "pagos_pendientes": 2
+    },
+    "usuarios": {
+      "total_tecnicos": 3,
+      "total_clientes": 15
+    }
+  }
+}
+```
+
+#### **Reporte de ingresos**
+```http
+GET /api/reportes/ingresos?periodo=mes
+Authorization: Bearer {TOKEN_ADMIN}
+```
+
+**Respuesta (200):**
+```json
+{
+  "mensaje": "Reporte de ingresos obtenido exitosamente.",
+  "data": {
+    "periodo": "mes",
+    "total_ingresos": 4250.00,
+    "total_transacciones": 8,
+    "ingresos_por_metodo": [
+      {"metodo_pago": "YAPE", "total": 2500.00},
+      {"metodo_pago": "TRANSFERENCIA", "total": 1750.00}
+    ],
+    "ingresos_por_tipo": [
+      {"tipo_pago": "ADELANTO", "total": 2125.00},
+      {"tipo_pago": "FINAL", "total": 2125.00}
+    ],
+    "ingresos_diarios": [
+      {"fecha": "2026-07-01", "total": 500.00},
+      {"fecha": "2026-07-05", "total": 1200.00}
+    ]
+  }
+}
+```
+
+#### **Reporte de cotizaciones**
+```http
+GET /api/reportes/cotizaciones
+Authorization: Bearer {TOKEN_ADMIN}
+```
+
+**Respuesta (200):**
+```json
+{
+  "mensaje": "Reporte de cotizaciones obtenido exitosamente.",
+  "data": {
+    "total_cotizaciones": 25,
+    "por_estado": {
+      "BORRADOR": 2,
+      "ENVIADA": 5,
+      "APROBADA": 10,
+      "RECHAZADA": 3,
+      "LIQUIDADA": 5
+    },
+    "tasa_conversion": "66.67%",
+    "aprobadas": 15,
+    "rechazadas": 3,
+    "valores": {
+      "total_facturado": 45820.50,
+      "promedio": 1832.82,
+      "maximo": 5200.00,
+      "minimo": 280.00
+    },
+    "tiempo_promedio_aprobacion_horas": 36.5
+  }
+}
+```
+
+#### **Reporte de pagos pendientes**
+```http
+GET /api/reportes/pagos-pendientes
+Authorization: Bearer {TOKEN_ADMIN}
+```
+
+**Respuesta (200):**
+```json
+{
+  "mensaje": "Reporte de pagos pendientes obtenido exitosamente.",
+  "data": {
+    "total_pagos_pendientes": 5,
+    "monto_total_pendiente": 3450.00,
+    "dias_promedio_pendiente": 2.5,
+    "por_metodo_pago": [
+      {"metodo_pago": "YAPE", "cantidad": 3, "total": 1500.00}
+    ],
+    "pagos_mas_antiguos": [
+      {
+        "id_pago": 12,
+        "monto_pagado": 500.00,
+        "dias_pendiente": 4,
+        "solicitud": {
+          "cliente": "Maria Perez",
+          "tecnico": "Juan Electricista"
+        }
+      }
+    ]
+  }
+}
+```
+
+### 🎨 Frontend (Flutter)
+
+```dart
+// Widget de Dashboard para Admin
+class DashboardScreen extends StatefulWidget {
+  @override
+  _DashboardScreenState createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  Map<String, dynamic>? _dashboard;
+  
+  @override
+  void initState() {
+    super.initState();
+    _cargarDashboard();
+  }
+  
+  Future<void> _cargarDashboard() async {
+    final response = await api.get('/reportes/dashboard');
+    setState(() {
+      _dashboard = response['data'];
+    });
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    if (_dashboard == null) return CircularProgressIndicator();
+    
+    return GridView.count(
+      crossAxisCount: 2,
+      children: [
+        _buildCard('Solicitudes Hoy', _dashboard!['solicitudes']['hoy'].toString()),
+        _buildCard('Ingresos del Mes', 'S/ ${_dashboard!['finanzas']['ingresos_mes']}'),
+        _buildCard('Pagos Pendientes', _dashboard!['finanzas']['pagos_pendientes'].toString()),
+        _buildCard('Total Técnicos', _dashboard!['usuarios']['total_tecnicos'].toString()),
+      ],
+    );
+  }
+  
+  Widget _buildCard(String title, String value) {
+    return Card(
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(title, style: TextStyle(fontSize: 14)),
+            SizedBox(height: 8),
+            Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Widget para gráfico de ingresos
+Widget _buildGraficoIngresos(List<dynamic> ingresosDiarios) {
+  return LineChart(
+    LineChartData(
+      lineBarsData: [
+        LineChartBarData(
+          spots: ingresosDiarios.map((item) {
+            return FlSpot(
+              ingresosDiarios.indexOf(item).toDouble(),
+              item['total'],
+            );
+          }).toList(),
+        ),
+      ],
+    ),
+  );
+}
+```
+
+---
+
+## 📊 Resumen de Endpoints por Rol
+
+### **Cliente**
+- `POST /api/solicitudes` - Crear solicitud (con `es_urgente`, `materiales_cliente`)
+- `GET /api/solicitudes/mis-solicitudes` - Ver sus solicitudes
+- `POST /api/finanzas/{uuid}/adelanto` - Pagar adelanto (30%-100%)
+- `GET /api/finanzas/mis-pagos` - Ver sus pagos
+
+### **Técnico**
+- `GET /api/solicitudes/asignadas` - Ver hoja de ruta (urgentes primero)
+- `POST /api/evidencias/subir` - Subir evidencias (con `observaciones`)
+- `GET /api/catalogo/tipos-trabajo` - Ver tipos de trabajo
+- `GET /api/catalogo/tipos-trabajo/{id}/materiales-sugeridos` - Ver sugerencias
+- `PUT /api/solicitudes/{uuid}` - Enviar cotización
+
+### **Admin**
+- `GET /api/solicitudes` - Ver todas (urgentes primero, filtros)
+- `GET /api/solicitudes?urgentes=1&estado=PENDIENTE` - Filtrar
+- `PATCH /api/finanzas/{id_pago}/verificar` - Aprobar pago
+- `GET /api/reportes/dashboard` - Dashboard
+- `GET /api/reportes/ingresos` - Reporte de ingresos
+- `GET /api/reportes/cotizaciones` - Reporte de cotizaciones
+- `GET /api/reportes/pagos-pendientes` - Pagos pendientes
+
+---
+
+## 🎯 Casos de Uso Comunes
+
+### **Flujo Completo de Solicitud Urgente**
+
+1. **Cliente** crea solicitud con `es_urgente: true`
+2. **Admin** ve la solicitud primero en la lista
+3. **Admin** asigna técnico
+4. **Técnico** recibe solicitud urgente primero en su hoja de ruta
+5. **Técnico** sube evidencias con observaciones
+6. **Técnico** envía cotización
+7. **Cliente** paga 100% (liquidación)
+8. **Admin** verifica pago → Cotización pasa a LIQUIDADA
+
+### **Flujo de Cotización con Sugerencias**
+
+1. **Técnico** abre formulario de cotización
+2. **Técnico** selecciona "Instalación de tablero"
+3. **Sistema** sugiere: Tablero (1x), Cable (5x), Mano de obra (1x)
+4. **Técnico** ajusta cantidades si es necesario
+5. **Técnico** envía cotización
+
+---
+
+**¡Con esta guía, el equipo de frontend puede implementar todas las funcionalidades!** 🚀

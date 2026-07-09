@@ -31,6 +31,7 @@ const PaymentView = () => {
   const [processing, setProcessing] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [advanceError, setAdvanceError] = useState('');
+  const [comprobanteFile, setComprobanteFile] = useState(null);
 
   const fetchData = async () => {
     try {
@@ -93,25 +94,27 @@ const PaymentView = () => {
     setPaymentSuccess(false);
     setProcessing(false);
     setAdvanceError('');
-    setMonto(req.quotation?.total ? (parseFloat(req.quotation.total) * 0.5).toFixed(2) : '');
+    setMonto(req.quotation?.total ? (parseFloat(req.quotation.total) * 0.30).toFixed(2) : '');
     setNumeroOperacion('');
-    setMetodoPago('');
+    setMetodoPago('TRANSFERENCIA');
     setUrlComprobante('');
+    setComprobanteFile(null);
   };
 
   const handleAdvanceSubmit = async (e) => {
     e.preventDefault();
     setAdvanceError('');
-    if (!monto || !numeroOperacion || !metodoPago || !urlComprobante) {
-      setAdvanceError('Por favor complete todos los datos y adjunte el comprobante.');
+    if (!monto || (!numeroOperacion && !comprobanteFile && !urlComprobante) || !metodoPago) {
+      setAdvanceError('Por favor ingrese el monto, método de pago y el número de operación o comprobante.');
       return;
     }
 
     const numericMonto = parseFloat(monto);
-    const maxAmount = selectedRequest?.quotation?.total * 0.5;
+    const totalAmount = selectedRequest?.quotation?.total || 0;
+    const minAmount = totalAmount * 0.30;
 
-    if (numericMonto > maxAmount) {
-      setAdvanceError(`El pago no puede superar el 50% del total (S/ ${maxAmount.toFixed(2)}).`);
+    if (totalAmount > 0 && (numericMonto < minAmount - 0.01 || numericMonto > totalAmount + 0.01)) {
+      setAdvanceError(`El monto debe estar entre el 30% (S/ ${minAmount.toFixed(2)}) y el 100% (S/ ${totalAmount.toFixed(2)}).`);
       return;
     }
 
@@ -119,9 +122,10 @@ const PaymentView = () => {
     try {
       await api.finances.registerAdvance(selectedRequest.id, { 
         monto: parseFloat(monto), 
-        numero_operacion: numeroOperacion, 
+        numero_operacion: numeroOperacion || 'Adjunto', 
         metodo_pago: metodoPago,
-        url_comprobante: urlComprobante
+        url_comprobante: urlComprobante || 'Cloudinary',
+        comprobanteFile: comprobanteFile
       });
       setPaymentSuccess(true);
       await fetchData();
@@ -133,7 +137,7 @@ const PaymentView = () => {
       } else if (err.isTemporaryUnavailable) {
         alert('Servicio temporalmente no disponible (Error 500). Intente más tarde.');
       } else {
-        alert(err.message || 'Error al registrar el adelanto.');
+        alert(err.message || 'Error al registrar el pago.');
       }
     } finally {
       setProcessing(false);
@@ -213,16 +217,22 @@ const PaymentView = () => {
                   const isSaldoPendiente = st === 'APROBADA' || st === 'EN_PROCESO' || (item.status || '').toLowerCase() === 'aprobado' || (item.status || '').toLowerCase() === 'en curso';
                   const montoMitad = parseFloat(item.quotation.total) * 0.5;
 
+                  const cardBorderColor = isCotizada ? 'border-amber-200/60' : 'border-indigo-200/60';
+                  const headerBgColor = isCotizada ? 'bg-amber-50/50 border-amber-100' : 'bg-indigo-50/50 border-indigo-100';
+                  const labelColor = isCotizada ? 'text-amber-600' : 'text-indigo-600';
+                  const labelText = isCotizada ? 'Adelanto Pendiente' : 'Saldo Pendiente';
+
                   return (
-                    <div key={item.id} className="bg-white border border-slate-200/60 rounded-3xl overflow-hidden shadow-soft-sm text-xs">
-                      <div className="bg-slate-50 border-b border-slate-100 px-5 py-4 flex items-center justify-between">
+                    <div key={item.id} className={`bg-white border ${cardBorderColor} rounded-3xl overflow-hidden shadow-soft-sm text-xs`}>
+                      <div className={`${headerBgColor} border-b px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3`}>
                          <div>
                            <span className="font-bold text-slate-800 text-sm block">{item.type}</span>
                            <span className="text-[10px] text-slate-400 font-mono mt-0.5 block">Ref: {item.id}</span>
+                           <p className="text-[11px] text-slate-500 mt-1.5 max-w-md line-clamp-2">{item.description}</p>
                          </div>
-                         <div className="text-right">
-                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Pendiente</span>
-                           <span className="text-xs font-black text-rose-500 block mt-0.5">{formatCurrency(montoMitad)}</span>
+                         <div className="text-left sm:text-right shrink-0">
+                           <span className={`text-[10px] font-extrabold uppercase tracking-widest block ${labelColor}`}>{labelText}</span>
+                           <span className="text-sm font-black text-rose-500 block mt-0.5">{formatCurrency(montoMitad)}</span>
                          </div>
                       </div>
                       <div className="divide-y divide-slate-100">
@@ -441,14 +451,13 @@ const PaymentView = () => {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">N° de Operación / Transferencia</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">N° de Operación (Opcional si sube archivo)</label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <History className="w-4 h-4 text-slate-400" />
                       </div>
                       <input
                         type="text"
-                        required
                         value={numeroOperacion}
                         onChange={(e) => setNumeroOperacion(e.target.value)}
                         placeholder="Ej. 12345678"
@@ -458,7 +467,7 @@ const PaymentView = () => {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Monto Transferido (PEN)</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Monto a Pagar (Mín. 30% - Máx. 100%)</label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <span className="text-slate-400 font-bold text-xs pl-0.5">S/</span>
@@ -477,21 +486,19 @@ const PaymentView = () => {
                     </div>
                   </div>
 
-                  {/* Faux Upload Comprobante */}
+                  {/* Subida de Comprobante Cloudinary */}
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Comprobante de Pago</label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Upload className="w-4 h-4 text-slate-400" />
-                      </div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Archivo de Comprobante (Cloudinary)</label>
+                    <div className="relative border border-dashed border-slate-300 rounded-xl p-2.5 bg-slate-50">
                       <input
-                        type="text"
-                        required
-                        value={urlComprobante}
-                        onChange={(e) => setUrlComprobante(e.target.value)}
-                        placeholder="Pegue URL del voucher o 'adjunto.jpg'"
-                        className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-soft"
+                        type="file"
+                        accept="image/*,.pdf"
+                        onChange={(e) => setComprobanteFile(e.target.files?.[0] || null)}
+                        className="w-full text-xs text-slate-600 file:mr-3 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 cursor-pointer"
                       />
+                      {comprobanteFile && (
+                        <p className="text-[11px] text-emerald-600 font-semibold mt-1">✓ {comprobanteFile.name}</p>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -52,6 +52,7 @@ const RequestWizard = () => {
   const [incidentType, setIncidentType] = useState('');
   const [description, setDescription] = useState('');
   const [notasDisponibilidad, setNotasDisponibilidad] = useState('');
+  const [materialesCliente, setMaterialesCliente] = useState('');
   const [address, setAddress] = useState(user?.address || '');
   const [coordinates, setCoordinates] = useState({ lat: -12.1221, lng: -77.0305 }); // Ubicación Lima por defecto
   const [isEmergency, setIsEmergency] = useState(false);
@@ -120,9 +121,11 @@ const RequestWizard = () => {
         type: INCIDENT_TYPES.find(i => i.id === incidentType)?.label || 'Avería Eléctrica',
         description,
         notasDisponibilidad,
+        materiales_cliente: materialesCliente,
         address,
         coordinates,
         isEmergency,
+        es_urgente: isEmergency,
         scheduledDate,
         scheduledTime
       });
@@ -243,6 +246,23 @@ const RequestWizard = () => {
                   <button type="button" onClick={() => handleQuickNote('Llamar antes de venir')} className="px-2 py-1 text-[10px] bg-slate-100 hover:bg-indigo-50 text-slate-600 rounded-lg cursor-pointer transition-soft">Llamar antes de venir</button>
                   <button type="button" onClick={() => handleQuickNote('Dejar en recepción')} className="px-2 py-1 text-[10px] bg-slate-100 hover:bg-indigo-50 text-slate-600 rounded-lg cursor-pointer transition-soft">Avisar en recepción</button>
                 </div>
+              </div>
+
+              {/* Materiales del Cliente */}
+              <div className="space-y-1 pt-1">
+                <label className="text-xs font-semibold text-slate-600">
+                  Materiales que ya tiene disponibles (Opcional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={materialesCliente}
+                  onChange={(e) => setMaterialesCliente(e.target.value)}
+                  placeholder="Ej: Ya tengo el tablero de 8 polos y 5 rollos de cable THW 2.5mm. Solo necesito mano de obra..."
+                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:border-indigo-500 focus:bg-white transition-soft resize-none"
+                />
+                <p className="text-[11px] text-slate-400">
+                  Si cuenta con repuestos propios o materiales listos para instalar, indíquelo para que el técnico lo tome en cuenta.
+                </p>
               </div>
             </div>
           </div>
