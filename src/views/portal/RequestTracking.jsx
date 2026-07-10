@@ -20,6 +20,314 @@ import {
   ArrowRight
 } from 'lucide-react';
 
+const OPERATIONAL_STAGES = [
+  { id: 'PENDIENTE', label: 'Pendiente', desc: 'Revisión en oficina' },
+  { id: 'ASIGNADA', label: 'Asignada', desc: 'Técnico seleccionado' },
+  { id: 'COTIZADA', label: 'Cotizada', desc: 'Presupuesto listo' },
+  { id: 'EN_PROCESO', label: 'En Proceso', desc: 'Reparación activa' },
+  { id: 'FINALIZADA', label: 'Finalizada', desc: 'Servicio concluido' }
+];
+
+const getOperationalStageIndex = (rawStatus) => {
+  if (!rawStatus) return 0;
+  const s = rawStatus.toString().toUpperCase();
+  if (s === 'CANCELADA' || s === 'CANCELADO' || s === 'ANULADA' || s === 'RECHAZADA') return -1;
+  if (s === 'FINALIZADA' || s === 'FINALIZADO' || s === 'COMPLETADA' || s === 'TERMINADA') return 4;
+  if (s === 'EN_PROCESO' || s === 'EN CURSO' || s === 'PROCESO') return 3;
+  if (s === 'COTIZADA' || s === 'APROBADA' || s === 'REVISION_PAGO') return 2;
+  if (s === 'ASIGNADA' || s === 'ASIGNADO') return 1;
+  return 0;
+};
+
+// Componente B: Estado Financiero (Desvinculado del Flujo Operativo)
+const FinancialStatusCard = ({ request, totalAmount, totalPaid, remainingBalance }) => {
+  const getFinancialStatusInfo = () => {
+    const estadoPago = (request?.estado_pago || '').toString().toUpperCase();
+    const tipoPago = (request?.tipo_pago || '').toString().toUpperCase();
+    const rawStatus = (request?.statusRaw || request?.status || '').toString().toUpperCase();
+
+    // 1. Pagado / Liquidado (Verde Esmeralda)
+    const isFullyPaid =
+      (estadoPago === 'COMPLETADO' && (tipoPago === 'FINAL' || tipoPago === 'TOTAL')) ||
+      estadoPago === 'PAGADO' ||
+      estadoPago === 'LIQUIDADO' ||
+      (totalAmount > 0 && remainingBalance <= 0.01 && totalPaid >= totalAmount - 0.01);
+
+    if (isFullyPaid) {
+      return {
+        key: 'PAGADO',
+        label: 'Pagado / Liquidado',
+        badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        dotClass: 'bg-emerald-500',
+        cardBorder: 'border-emerald-200/80',
+        iconBg: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+        description: 'El monto del servicio se encuentra 100% pagado y liquidado.'
+      };
+    }
+
+    // 2. Adelanto confirmado (Ámbar / Amarillo)
+    const isAdvanceConfirmed =
+      estadoPago === 'ADELANTO' ||
+      tipoPago === 'ADELANTO' ||
+      rawStatus === 'APROBADA' ||
+      (totalPaid > 0 && remainingBalance > 0.01);
+
+    if (isAdvanceConfirmed) {
+      return {
+        key: 'ADELANTO',
+        label: 'Adelanto confirmado',
+        badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
+        dotClass: 'bg-amber-500',
+        cardBorder: 'border-amber-200/80',
+        iconBg: 'bg-amber-50 text-amber-600 border-amber-100',
+        description: 'Adelanto registrado. Saldo pendiente al finalizar la asistencia.'
+      };
+    }
+
+    // 3. Pendiente de pago (Gris Neutro)
+    return {
+      key: 'PENDIENTE_PAGO',
+      label: 'Pendiente de pago',
+      badgeClass: 'bg-slate-100 text-slate-700 border-slate-200',
+      dotClass: 'bg-slate-400',
+      cardBorder: 'border-slate-200/70',
+      iconBg: 'bg-slate-100 text-slate-600 border-slate-200',
+      description: totalAmount > 0
+        ? 'En espera de confirmación de pago para proceder con el servicio.'
+        : 'Cotización sujeta a evaluación técnica previa al cobro.'
+    };
+  };
+
+  const statusInfo = getFinancialStatusInfo();
+  const progressPercent = totalAmount > 0 ? Math.min(100, Math.round((totalPaid / totalAmount) * 100)) : 0;
+
+  return (
+    <div className={`w-full h-full bg-white/95 backdrop-blur-lg border ${statusInfo.cardBorder} rounded-3xl p-6 md:p-7 shadow-soft flex flex-col justify-between transition-soft`}>
+      <div>
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="flex items-center space-x-2.5">
+            <div className={`p-2.5 rounded-2xl border ${statusInfo.iconBg}`}>
+              <CreditCard className="w-4.5 h-4.5" />
+            </div>
+            <div>
+              <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-400">
+                Estado Financiero
+              </h3>
+              <p className="font-extrabold text-slate-800 text-sm">Resumen de Pagos</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-5">
+          <span className={`inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-extrabold border ${statusInfo.badgeClass}`}>
+            <span className={`w-2 h-2 rounded-full mr-2 shrink-0 ${statusInfo.dotClass}`}></span>
+            {statusInfo.label}
+          </span>
+          <p className="text-xs text-slate-500 mt-2.5 leading-relaxed">
+            {statusInfo.description}
+          </p>
+        </div>
+      </div>
+
+      <div className="pt-4 border-t border-slate-100/80 space-y-3">
+        {totalAmount > 0 ? (
+          <>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                <span className="text-[10px] text-slate-400 font-semibold uppercase block">Cotizado</span>
+                <span className="font-bold text-slate-800">S/ {totalAmount.toFixed(2)}</span>
+              </div>
+              <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                <span className="text-[10px] text-slate-400 font-semibold uppercase block">Abonado</span>
+                <span className="font-bold text-emerald-600">S/ {totalPaid.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-[11px] font-bold">
+                <span className="text-slate-500">Saldo Pendiente:</span>
+                <span className={remainingBalance > 0 ? 'text-amber-600' : 'text-emerald-600'}>
+                  S/ {remainingBalance.toFixed(2)}
+                </span>
+              </div>
+              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-700 rounded-full ${
+                    statusInfo.key === 'PAGADO'
+                      ? 'bg-emerald-500'
+                      : statusInfo.key === 'ADELANTO'
+                      ? 'bg-amber-500'
+                      : 'bg-slate-300'
+                  }`}
+                  style={{ width: `${progressPercent}%` }}
+                ></div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-2 pt-1">
+              <div className="p-3 rounded-xl border border-slate-200/60 bg-slate-50 flex justify-between items-center text-xs shadow-soft-sm">
+                <div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Adelanto Mínimo (30%)</p>
+                  <p className="font-black text-slate-800 mt-0.5">S/ {(totalAmount * 0.30).toFixed(2)}</p>
+                </div>
+                <div>
+                  {totalPaid >= (totalAmount * 0.30) - 0.01 ? (
+                    <span className="bg-emerald-50 text-emerald-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-emerald-100 uppercase flex items-center">
+                      <CheckCircle2 className="w-3 h-3 mr-1" /> Abonado
+                    </span>
+                  ) : totalPaid > 0 ? (
+                    <span className="bg-indigo-50 text-indigo-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-indigo-100 uppercase flex items-center">
+                      <Clock className="w-3 h-3 mr-1" /> Parcial
+                    </span>
+                  ) : (
+                    <span className="bg-amber-50 text-amber-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-amber-100 uppercase flex items-center">
+                      <Clock className="w-3 h-3 mr-1" /> Pendiente
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl border border-slate-200/60 bg-slate-50 flex justify-between items-center text-xs shadow-soft-sm">
+                <div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Saldo Restante (50%)</p>
+                  <p className="font-black text-slate-800 mt-0.5">S/ {(totalAmount * 0.50).toFixed(2)}</p>
+                </div>
+                <div>
+                  {totalPaid >= totalAmount - 0.01 ? (
+                    <span className="bg-emerald-50 text-emerald-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-emerald-100 uppercase flex items-center">
+                      <CheckCircle2 className="w-3 h-3 mr-1" /> Cancelado
+                    </span>
+                  ) : (
+                    <span className="bg-rose-50 text-rose-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-rose-100 uppercase flex items-center">
+                      <AlertTriangle className="w-3 h-3 mr-1" /> Faltante
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {payments.length === 0 ? (
+              <div className="text-center p-3 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                <p className="text-[11px] font-semibold text-slate-500">Aún no se ha registrado el comprobante de pago.</p>
+              </div>
+            ) : (
+              <div className="space-y-2 pt-1 border-t border-slate-100">
+                <h4 className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Historial de Transacciones</h4>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                  {payments.map(pago => {
+                    const isVerified = pago.estado === 'VERIFICADO' || pago.estado === 'Aprobado' || pago.estado === 'COMPLETADO';
+                    const isRejected = pago.estado === 'RECHAZADO';
+                    return (
+                      <div key={pago.id_pago || pago.id || Math.random()} className="flex items-center justify-between p-2.5 bg-slate-50/80 border border-slate-200/60 rounded-xl text-xs">
+                        <div className="flex items-center space-x-2">
+                          <div className={`p-1.5 rounded-lg ${
+                            isVerified ? 'bg-emerald-100 text-emerald-600' :
+                            isRejected ? 'bg-rose-100 text-rose-600' :
+                            'bg-amber-100 text-amber-600'
+                          }`}>
+                            {isVerified ? <CheckCircle2 className="w-3.5 h-3.5" /> : isRejected ? <XCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                          </div>
+                          <div>
+                            <p className={`text-[11px] font-bold ${isRejected ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
+                              S/ {parseFloat(pago.monto_pagado || pago.monto || 0).toFixed(2)}
+                            </p>
+                            <p className="text-[9px] text-slate-400">{pago.metodo_pago || 'Transferencia'}</p>
+                          </div>
+                        </div>
+                        <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border uppercase ${
+                          isVerified ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                          isRejected ? 'bg-rose-50 text-rose-600 border-rose-100' :
+                          'bg-amber-50 text-amber-600 border-amber-100'
+                        }`}>
+                          {pago.estado === 'PENDIENTE' ? 'En Revisión' : pago.estado || 'Pendiente'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100/80 text-center">
+            <p className="text-xs font-semibold text-slate-600">Sin cotización generada</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">El importe se definirá tras la revisión técnica.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Componente A: Flujo Operativo (Stepper Horizontal de Progreso Técnico)
+const OperationalStepper = ({ request, currentOperationalIndex }) => {
+  return (
+    <div className="w-full h-full bg-white/95 backdrop-blur-lg border border-slate-200/70 rounded-3xl p-6 md:p-8 shadow-soft flex flex-col justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
+        <div className="flex items-center space-x-3">
+          <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100">
+            <Activity className="w-4.5 h-4.5" />
+          </div>
+          <div>
+            <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-400">
+              Flujo Operativo
+            </h3>
+            <p className="font-extrabold text-slate-800 text-sm md:text-base">
+              Progreso Técnico de la Solicitud
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center">
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+            Etapa {currentOperationalIndex + 1} de {OPERATIONAL_STAGES.length}: {OPERATIONAL_STAGES[currentOperationalIndex]?.label || 'Pendiente'}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex flex-col md:flex-row md:justify-between items-start md:items-center gap-6 relative my-auto">
+        {OPERATIONAL_STAGES.map((stage, idx) => {
+          const isCompleted = idx < currentOperationalIndex;
+          const isActive = idx === currentOperationalIndex;
+
+          return (
+            <div key={idx} className="flex md:flex-col items-center flex-1 w-full relative">
+              {idx < OPERATIONAL_STAGES.length - 1 && (
+                <div className="hidden md:block absolute left-[50%] top-4 w-[100%] h-0.5 bg-slate-100">
+                  <div
+                    className="bg-indigo-500 h-full transition-all duration-500"
+                    style={{ width: isCompleted ? '100%' : isActive ? '50%' : '0%' }}
+                  ></div>
+                </div>
+              )}
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 z-10 transition-soft ${
+                  isActive
+                    ? 'bg-indigo-600 text-white shadow-soft ring-4 ring-indigo-500/20'
+                    : isCompleted
+                    ? 'bg-emerald-500 text-white'
+                    : 'bg-slate-100 text-slate-400 border border-slate-200'
+                }`}
+              >
+                {isCompleted ? <CheckCircle2 className="w-4.5 h-4.5" /> : idx + 1}
+              </div>
+              <div className="ml-4 md:ml-0 md:text-center mt-0 md:mt-3 text-left">
+                <h4
+                  className={`text-xs font-bold ${
+                    isActive ? 'text-indigo-600' : isCompleted ? 'text-slate-800' : 'text-slate-400'
+                  }`}
+                >
+                  {stage.label}
+                </h4>
+                <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{stage.desc}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const RequestTracking = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -189,23 +497,13 @@ const RequestTracking = () => {
     }
   };
 
-  const STEPPER_STAGES = [
-    { id: 'PENDIENTE', label: 'Pendiente', desc: 'Revisión en oficina' },
-    { id: 'ASIGNADA', label: 'Asignado', desc: 'Técnico seleccionado' },
-    { id: 'COTIZADA', label: 'Cotizado', desc: 'Presupuesto listo' },
-    { id: 'REVISION_PAGO', label: 'En Revisión', desc: 'Validando pago' },
-    { id: 'APROBADA', label: 'Aprobado', desc: 'Adelanto confirmado' },
-    { id: 'EN_PROCESO', label: 'En curso', desc: 'Reparación activa' },
-    { id: 'FINALIZADA', label: 'Finalizado', desc: 'Servicio concluido' }
-  ];
+  const isCancelled =
+    request &&
+    ['CANCELADA', 'CANCELADO', 'ANULADA', 'RECHAZADA'].includes(
+      (request.statusRaw || request.status || '').toString().toUpperCase()
+    );
 
-  const getStageIndex = (rawStatus) => {
-    if (!rawStatus) return -1;
-    if (rawStatus === 'CANCELADA' || rawStatus === 'CANCELADO' || rawStatus === 'ANULADA' || rawStatus === 'RECHAZADA') return -1;
-    return STEPPER_STAGES.findIndex(s => s.id === rawStatus);
-  };
-
-  const currentStageIndex = request ? getStageIndex(request.statusRaw || 'PENDIENTE') : -1;
+  const currentOperationalIndex = request ? getOperationalStageIndex(request.statusRaw || request.status) : 0;
 
   const totalAmount = request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0;
   const totalPaid = payments
@@ -257,9 +555,6 @@ const RequestTracking = () => {
               <h1 className="font-display font-extrabold text-xl md:text-2xl text-slate-900">
                 Seguimiento de Asistencia
               </h1>
-              <span className="text-xs font-mono font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-                {request.id}
-              </span>
               {request.isEmergency && (
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-600 border border-rose-200">
                   <AlertTriangle className="w-3.5 h-3.5 mr-1" /> URGENTE
@@ -281,8 +576,8 @@ const RequestTracking = () => {
         )}
       </div>
 
-      {/* 1. PIPELINE / STEPPER VISUAL EN TIEMPO REAL */}
-      {request.status.toLowerCase() === 'cancelado' ? (
+      {/* 1. SEPARACIÓN VISUAL: FLUJO OPERATIVO Y ESTADO FINANCIERO */}
+      {isCancelled ? (
         <div className="bg-rose-50 border border-rose-100 rounded-3xl p-6 flex items-start space-x-3 text-rose-800 animate-slide-up">
           <XCircle className="w-6 h-6 text-rose-500 shrink-0 mt-0.5" />
           <div>
@@ -293,36 +588,20 @@ const RequestTracking = () => {
           </div>
         </div>
       ) : (
-        <div className="bg-white/90 backdrop-blur-lg border border-slate-200/60 rounded-3xl p-6 md:p-8 shadow-soft animate-slide-up">
-          <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-400 mb-6">Estado de la Visita Técnica</h3>
-          
-          <div className="flex flex-col md:flex-row md:justify-between items-start md:items-center gap-6 relative">
-            {STEPPER_STAGES.map((stage, idx) => {
-              const isCompleted = idx < currentStageIndex;
-              const isActive = idx === currentStageIndex;
-              
-              return (
-                <div key={idx} className="flex md:flex-col items-center flex-1 w-full relative">
-                  {idx < STEPPER_STAGES.length - 1 && (
-                    <div className="hidden md:block absolute left-[50%] top-4 w-[100%] h-0.5 bg-slate-100">
-                      <div 
-                        className="bg-indigo-500 h-full transition-all duration-500" 
-                        style={{ width: isCompleted ? '100%' : isActive ? '50%' : '0%' }}
-                      ></div>
-                    </div>
-                  )}
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 z-10 transition-soft ${
-                    isActive ? 'bg-indigo-600 text-white shadow-soft ring-4 ring-indigo-500/20' : isCompleted ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'
-                  }`}>
-                    {isCompleted ? <CheckCircle2 className="w-4.5 h-4.5" /> : idx + 1}
-                  </div>
-                  <div className="ml-4 md:ml-0 md:text-center mt-0 md:mt-3 text-left">
-                    <h4 className={`text-xs font-bold ${isActive ? 'text-indigo-600' : isCompleted ? 'text-slate-800' : 'text-slate-400'}`}>{stage.label}</h4>
-                    <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{stage.desc}</p>
-                  </div>
-                </div>
-              );
-            })}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-slide-up">
+          {/* Componente A: Flujo Operativo (2 Columnas en lg) */}
+          <div className="lg:col-span-2 flex">
+            <OperationalStepper request={request} currentOperationalIndex={currentOperationalIndex} />
+          </div>
+
+          {/* Componente B: Estado Financiero (1 Columna en lg) */}
+          <div className="lg:col-span-1 flex">
+            <FinancialStatusCard
+              request={request}
+              totalAmount={totalAmount}
+              totalPaid={totalPaid}
+              remainingBalance={remainingBalance}
+            />
           </div>
         </div>
       )}
@@ -335,7 +614,7 @@ const RequestTracking = () => {
           <div className="bg-white border border-slate-200/60 rounded-3xl p-6 shadow-soft space-y-4">
             <h3 className="font-display font-bold text-sm text-slate-800">Descripción del Reporte</h3>
             <p className="text-xs text-slate-500 leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-100/60">
-              {request.description}
+              {request.description || request.descripcion_problema || request.descripcion || request.detalle || 'Sin descripción detallada registrada'}
             </p>
             {request.materiales_cliente && (
               <div className="bg-blue-50/60 border border-blue-100 rounded-2xl p-4 text-xs text-blue-900 space-y-1 mt-3">
@@ -346,7 +625,7 @@ const RequestTracking = () => {
             
             <div className="flex flex-wrap items-center gap-6 pt-2 text-xs text-slate-500 border-t border-slate-100">
               <span className="flex items-center">
-                <MapPin className="w-4 h-4 text-slate-400 mr-1.5" /> {request.location.address}
+                <MapPin className="w-4 h-4 text-slate-400 mr-1.5" /> {request.location?.address || request.direccion_servicio || request.direccion || 'Dirección no especificada'}
               </span>
               {request.scheduledDate && (
                 <span className="flex items-center">
@@ -643,127 +922,6 @@ const RequestTracking = () => {
                   </form>
                 </div>
               )}
-            </div>
-          )}
-
-          {/* SECCIÓN NUEVA: ESTADO DE PAGOS Y SALDO */}
-          {currentStageIndex >= 3 && (
-            <div className="bg-white border-2 border-slate-200/80 rounded-3xl p-6 md:p-8 shadow-soft space-y-6 relative overflow-hidden animate-slide-up">
-              <div className="flex items-center space-x-3.5 border-b border-slate-100 pb-4">
-                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100 shadow-soft-sm">
-                  <CreditCard className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-display font-black text-slate-800 text-base md:text-lg">
-                    Estado de Pagos
-                  </h3>
-                  <p className="text-[11px] text-slate-400">Control de adelantos y saldo pendiente del servicio</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-4 rounded-xl border border-slate-200/60 bg-slate-50 flex justify-between items-center shadow-soft-sm">
-                   <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Adelanto Mínimo (30%)</p>
-                      <p className="text-lg font-black text-slate-800 mt-0.5">S/ {(totalAmount * 0.30).toFixed(2)}</p>
-                      <span className="text-[10px] text-indigo-600 font-semibold">O liquidar 100%: S/ {totalAmount.toFixed(2)}</span>
-                   </div>
-                   <div className="text-right">
-                      {totalPaid >= (totalAmount * 0.30) - 0.01 ? (
-                         <span className="bg-emerald-50 text-emerald-600 text-[9px] font-extrabold px-2 py-1 rounded border border-emerald-100 uppercase flex items-center">
-                           <CheckCircle2 className="w-3 h-3 mr-1" /> Abonado
-                         </span>
-                      ) : totalPaid > 0 ? (
-                         <span className="bg-indigo-50 text-indigo-600 text-[9px] font-extrabold px-2 py-1 rounded border border-indigo-100 uppercase flex items-center">
-                           <Clock className="w-3 h-3 mr-1" /> Parcial
-                         </span>
-                      ) : (
-                         <span className="bg-amber-50 text-amber-600 text-[9px] font-extrabold px-2 py-1 rounded border border-amber-100 uppercase flex items-center">
-                           <Clock className="w-3 h-3 mr-1" /> Pendiente
-                         </span>
-                      )}
-                   </div>
-                </div>
-                <div className="p-4 rounded-xl border border-slate-200/60 bg-slate-50 flex justify-between items-center shadow-soft-sm">
-                   <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Saldo Restante (50%)</p>
-                      <p className="text-lg font-black text-slate-800 mt-0.5">S/ {(totalAmount * 0.5).toFixed(2)}</p>
-                   </div>
-                   <div className="text-right">
-                      {totalPaid >= totalAmount - 0.01 ? (
-                         <span className="bg-emerald-50 text-emerald-600 text-[9px] font-extrabold px-2 py-1 rounded border border-emerald-100 uppercase flex items-center">
-                           <CheckCircle2 className="w-3 h-3 mr-1" /> Cancelado
-                         </span>
-                      ) : (
-                         <span className="bg-rose-50 text-rose-600 text-[9px] font-extrabold px-2 py-1 rounded border border-rose-100 uppercase flex items-center">
-                           <AlertTriangle className="w-3 h-3 mr-1" /> Faltante
-                         </span>
-                      )}
-                   </div>
-                </div>
-              </div>
-
-              {payments.length === 0 ? (
-                <div className="text-center p-5 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
-                  <p className="text-xs font-semibold text-slate-500">Aún no se ha registrado el comprobante de pago.</p>
-                </div>
-              ) : (
-                <div className="space-y-4 pt-2 border-t border-slate-100">
-                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Historial de Transacciones</h4>
-                  <div className="space-y-3">
-                    {payments.map(pago => {
-                      const isVerified = pago.estado === 'VERIFICADO' || pago.estado === 'Aprobado' || pago.estado === 'COMPLETADO';
-                      const isRejected = pago.estado === 'RECHAZADO';
-                      return (
-                        <div key={pago.id_pago || pago.id || Math.random()} className="flex items-center justify-between p-4 bg-white border border-slate-200/60 shadow-soft-sm rounded-xl hover:border-indigo-200 transition-soft">
-                          <div className="flex items-center space-x-3">
-                            <div className={`p-2 rounded-lg ${
-                              isVerified ? 'bg-emerald-100 text-emerald-600' :
-                              isRejected ? 'bg-rose-100 text-rose-600' :
-                              'bg-amber-100 text-amber-600'
-                            }`}>
-                              {isVerified ? <CheckCircle2 className="w-4 h-4" /> : isRejected ? <XCircle className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
-                            </div>
-                            <div>
-                              <p className={`text-xs font-bold ${isRejected ? 'text-slate-400 line-through' : 'text-slate-800'}`}>
-                                S/ {parseFloat(pago.monto_pagado || pago.monto || 0).toFixed(2)}
-                              </p>
-                              <p className="text-[10px] text-slate-500">{pago.metodo_pago || 'Transferencia'} • Op: {pago.nro_operacion || pago.numero_operacion || 'N/A'}</p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded border uppercase ${
-                              isVerified ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                              isRejected ? 'bg-rose-50 text-rose-600 border-rose-100' :
-                              'bg-amber-50 text-amber-600 border-amber-100'
-                            }`}>
-                              {pago.estado === 'PENDIENTE' ? 'En Revisión' : pago.estado || 'Pendiente'}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <div className="bg-slate-800 rounded-2xl p-5 flex flex-col sm:flex-row justify-between items-center gap-4 mt-4 shadow-soft">
-                <div className="w-full sm:w-auto flex justify-between sm:block">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Abonado Confirmado</span>
-                  <span className="text-base font-bold text-white mt-0.5 block">S/ {totalPaid.toFixed(2)}</span>
-                </div>
-                <div className="hidden sm:block w-px h-8 bg-slate-700"></div>
-                <div className="w-full sm:w-auto flex justify-between sm:block sm:text-right">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Saldo Final Faltante</span>
-                  {remainingBalance > 0 ? (
-                    <span className="text-xl font-black text-rose-400 mt-0.5 block">S/ {remainingBalance.toFixed(2)}</span>
-                  ) : (
-                    <div className="text-emerald-400 text-sm font-black flex items-center justify-end mt-0.5">
-                      <CheckCircle2 className="w-5 h-5 mr-1.5" /> Pagado 100%
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
           )}
 

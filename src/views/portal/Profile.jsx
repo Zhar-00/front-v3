@@ -320,7 +320,6 @@ const Profile = () => {
                     
                     <div className="space-y-1 text-left min-w-0 flex-1">
                       <div className="flex items-center space-x-2">
-                        <span className="font-mono font-bold text-[10px] text-slate-400">{req.id}</span>
                         {getStatusBadge(req.status)}
                       </div>
                       <h4 className="font-bold text-slate-800 text-sm truncate">{req.type}</h4>

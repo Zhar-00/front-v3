@@ -17,6 +17,74 @@ import {
   FileText
 } from 'lucide-react';
 
+const OPERATIONAL_STAGES = [
+  { id: 'PENDIENTE', label: 'Pendiente', desc: 'Revisión en oficina' },
+  { id: 'ASIGNADA', label: 'Asignada', desc: 'Técnico seleccionado' },
+  { id: 'COTIZADA', label: 'Cotizada', desc: 'Presupuesto listo' },
+  { id: 'EN_PROCESO', label: 'En Proceso', desc: 'Reparación activa' },
+  { id: 'FINALIZADA', label: 'Finalizada', desc: 'Servicio concluido' }
+];
+
+const getOperationalStageIndex = (rawStatus) => {
+  if (!rawStatus) return 0;
+  const s = rawStatus.toString().toUpperCase();
+  if (s === 'CANCELADA' || s === 'CANCELADO' || s === 'ANULADA' || s === 'RECHAZADA') return -1;
+  if (s === 'FINALIZADA' || s === 'FINALIZADO' || s === 'COMPLETADA' || s === 'TERMINADA') return 4;
+  if (s === 'EN_PROCESO' || s === 'EN CURSO' || s === 'PROCESO') return 3;
+  if (s === 'COTIZADA' || s === 'APROBADA' || s === 'REVISION_PAGO') return 2;
+  if (s === 'ASIGNADA' || s === 'ASIGNADO') return 1;
+  return 0;
+};
+
+const getFinancialBadge = (request) => {
+  if (!request) return null;
+  const estadoPago = (request?.estado_pago || '').toString().toUpperCase();
+  const tipoPago = (request?.tipo_pago || '').toString().toUpperCase();
+  const rawStatus = (request?.statusRaw || request?.status || '').toString().toUpperCase();
+
+  const totalAmount = request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0;
+  const totalPaid = request?.payments
+    ? request.payments.reduce((sum, p) => sum + parseFloat(p.monto_pagado || p.monto || 0), 0)
+    : 0;
+
+  const isFullyPaid =
+    (estadoPago === 'COMPLETADO' && (tipoPago === 'FINAL' || tipoPago === 'TOTAL')) ||
+    estadoPago === 'PAGADO' ||
+    estadoPago === 'LIQUIDADO' ||
+    (totalAmount > 0 && totalPaid >= totalAmount - 0.01);
+
+  if (isFullyPaid) {
+    return (
+      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
+        Pagado / Liquidado
+      </span>
+    );
+  }
+
+  const isAdvanceConfirmed =
+    estadoPago === 'ADELANTO' ||
+    tipoPago === 'ADELANTO' ||
+    rawStatus === 'APROBADA' ||
+    totalPaid > 0;
+
+  if (isAdvanceConfirmed) {
+    return (
+      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5"></span>
+        Adelanto confirmado
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+      <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5"></span>
+      Pendiente de pago
+    </span>
+  );
+};
+
 const Dashboard = () => {
   const { user } = useAuth();
   const [requests, setRequests] = useState([]);
@@ -133,23 +201,9 @@ const Dashboard = () => {
   const historyRequests = requests.length > 1 ? requests.slice(1) : [];
   const visibleHistory = showAllHistory ? historyRequests : historyRequests.slice(0, 6);
 
-  const STEPPER_STAGES = [
-    { id: 'PENDIENTE', label: 'Pendiente', desc: 'Revisión en oficina' },
-    { id: 'ASIGNADA', label: 'Asignado', desc: 'Técnico seleccionado' },
-    { id: 'COTIZADA', label: 'Cotizado', desc: 'Presupuesto listo' },
-    { id: 'REVISION_PAGO', label: 'En Revisión', desc: 'Validando pago' },
-    { id: 'APROBADA', label: 'Aprobado', desc: 'Adelanto confirmado' },
-    { id: 'EN_PROCESO', label: 'En curso', desc: 'Reparación activa' },
-    { id: 'FINALIZADA', label: 'Finalizado', desc: 'Servicio concluido' }
-  ];
-
-  let currentStageIndex = 0;
-  if (featuredRequest) {
-    const raw = featuredRequest.statusRaw || 'PENDIENTE';
-    const foundIndex = STEPPER_STAGES.findIndex(s => s.id === raw);
-    if (foundIndex !== -1) currentStageIndex = foundIndex;
-    if (raw === 'CANCELADA' || raw === 'CANCELADO' || raw === 'ANULADA' || raw === 'RECHAZADA') currentStageIndex = -1;
-  }
+  const currentStageIndex = featuredRequest
+    ? getOperationalStageIndex(featuredRequest.statusRaw || featuredRequest.status)
+    : 0;
 
   return (
     <div className="space-y-6 text-left font-sans animate-fade-in">
@@ -259,19 +313,17 @@ const Dashboard = () => {
               <div>
                 <h3 className="font-display font-bold text-lg text-slate-900 flex items-center">
                   Servicio Activo
-                  <span className="ml-3 px-2.5 py-1 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-mono tracking-wider">
-                    {featuredRequest.id}
-                  </span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-1">{featuredRequest.type}</p>
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {featuredRequest.isEmergency && (
                   <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-600 border border-rose-100">
                     <AlertTriangle className="w-3.5 h-3.5 mr-1" /> URGENTE
                   </span>
                 )}
                 {getStatusBadge(featuredRequest.status)}
+                {getFinancialBadge(featuredRequest)}
                 {featuredRequest.status === 'Pendiente' && (
                   <button
                     onClick={() => handleCancelRequest(featuredRequest.id)}
@@ -285,7 +337,7 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* Stepper del servicio destacado */}
+            {/* Stepper del servicio destacado (Flujo Operativo de 5 Etapas) */}
             {currentStageIndex === -1 ? (
               <div className="bg-rose-50 border border-rose-100 rounded-2xl p-6 flex items-start space-x-3 text-rose-800">
                 <XCircle className="w-6 h-6 text-rose-500 shrink-0 mt-0.5" />
@@ -298,27 +350,39 @@ const Dashboard = () => {
               </div>
             ) : (
               <div className="flex flex-col md:flex-row md:justify-between items-start md:items-center gap-6 relative py-4">
-                {STEPPER_STAGES.map((stage, idx) => {
+                {OPERATIONAL_STAGES.map((stage, idx) => {
                   const isCompleted = idx < currentStageIndex;
                   const isActive = idx === currentStageIndex;
-                  
+
                   return (
                     <div key={idx} className="flex md:flex-col items-center flex-1 w-full relative">
-                      {idx < STEPPER_STAGES.length - 1 && (
+                      {idx < OPERATIONAL_STAGES.length - 1 && (
                         <div className="hidden md:block absolute left-[50%] top-4 w-[100%] h-0.5 bg-slate-100">
-                          <div 
-                            className="bg-indigo-500 h-full transition-all duration-500" 
+                          <div
+                            className="bg-indigo-500 h-full transition-all duration-500"
                             style={{ width: isCompleted ? '100%' : isActive ? '50%' : '0%' }}
                           ></div>
                         </div>
                       )}
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 z-10 transition-soft ${
-                        isActive ? 'bg-indigo-600 text-white shadow-soft ring-4 ring-indigo-500/20' : isCompleted ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'
-                      }`}>
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 z-10 transition-soft ${
+                          isActive
+                            ? 'bg-indigo-600 text-white shadow-soft ring-4 ring-indigo-500/20'
+                            : isCompleted
+                            ? 'bg-emerald-500 text-white'
+                            : 'bg-slate-100 text-slate-400 border border-slate-200'
+                        }`}
+                      >
                         {isCompleted ? <CheckCircle2 className="w-4.5 h-4.5" /> : idx + 1}
                       </div>
                       <div className="ml-4 md:ml-0 md:text-center mt-0 md:mt-3 text-left">
-                        <h4 className={`text-xs font-bold ${isActive ? 'text-indigo-600' : isCompleted ? 'text-slate-800' : 'text-slate-400'}`}>{stage.label}</h4>
+                        <h4
+                          className={`text-xs font-bold ${
+                            isActive ? 'text-indigo-600' : isCompleted ? 'text-slate-800' : 'text-slate-400'
+                          }`}
+                        >
+                          {stage.label}
+                        </h4>
                         <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{stage.desc}</p>
                       </div>
                     </div>
@@ -394,8 +458,7 @@ const Dashboard = () => {
                     key={request.id}
                     className="bg-white/80 backdrop-blur-md border border-slate-200/60 rounded-2xl p-5 shadow-soft hover:border-slate-300 transition-soft flex flex-col space-y-3"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-slate-400 font-mono tracking-wider">{request.id}</span>
+                    <div className="flex items-center justify-end">
                       <div className="flex items-center space-x-1.5">
                         {request.isEmergency && (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100">

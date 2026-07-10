@@ -227,7 +227,6 @@ const PaymentView = () => {
                       <div className={`${headerBgColor} border-b px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3`}>
                          <div>
                            <span className="font-bold text-slate-800 text-sm block">{item.type}</span>
-                           <span className="text-[10px] text-slate-400 font-mono mt-0.5 block">Ref: {item.id}</span>
                            <p className="text-[11px] text-slate-500 mt-1.5 max-w-md line-clamp-2">{item.description}</p>
                          </div>
                          <div className="text-left sm:text-right shrink-0">
@@ -312,7 +311,6 @@ const PaymentView = () => {
                         <div className="bg-slate-50 border-b border-slate-100 px-5 py-4 flex items-center justify-between">
                            <div>
                              <span className="font-bold text-slate-800 text-sm block">{servicio}</span>
-                             <span className="text-[10px] text-slate-400 font-mono mt-0.5 block">Ref: {sId}</span>
                            </div>
                            <div className="text-right">
                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Pagos</span>
@@ -374,7 +372,7 @@ const PaymentView = () => {
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="text-left">
                 <h3 className="font-display font-black text-base text-slate-900">Registrar Transferencia</h3>
-                <p className="text-[10px] text-slate-400 mt-0.5 font-mono">Orden: {selectedRequest.id}</p>
+                {selectedRequest.type && <p className="text-xs text-slate-400 mt-0.5">{selectedRequest.type}</p>}
               </div>
               <button 
                 onClick={() => setShowGateway(false)}

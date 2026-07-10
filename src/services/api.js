@@ -256,10 +256,10 @@ export const api = {
           id: s.uuid_solicitud || s.id_solicitud || s.id,
           status: mappedStatus,
           statusRaw: s.estado,
-          type: s.tipo_servicio || 'Avería Eléctrica',
-          description: s.descripcion_problema,
+          type: s.tipo_servicio || s.tipo || 'Avería Eléctrica',
+          description: s.descripcion_problema || s.descripcion || s.description || s.detalle || 'Sin descripción registrada',
           createdAt: s.fecha_creacion || s.created_at || new Date().toISOString(),
-          location: { address: s.direccion_servicio },
+          location: { address: s.direccion_servicio || s.direccion || s.location?.address || s.direccion_solicitud || 'Dirección no especificada' },
           isEmergency: Boolean(s.es_urgente || s.es_emergencia || s.is_emergency),
           materiales_cliente: s.materiales_cliente || null,
           technician: s.tecnico ? {
@@ -283,7 +283,7 @@ export const api = {
         headers: getHeaders(true)
       });
       const data = await handleResponse(response);
-      const s = data.solicitud || data.data || data;
+      const s = data.solicitud || (data.data && data.data.solicitud) || data.data || data;
 
       let mappedStatus = s.estado ? s.estado.charAt(0).toUpperCase() + s.estado.slice(1).toLowerCase() : 'Pendiente';
       if (mappedStatus === 'En_proceso') mappedStatus = 'En ejecución';
@@ -292,9 +292,9 @@ export const api = {
         id: s.uuid_solicitud || s.id_solicitud || s.id,
         status: mappedStatus,
         statusRaw: s.estado,
-        type: s.tipo_servicio || 'Avería Eléctrica',
-        description: s.descripcion_problema,
-        location: { address: s.direccion_servicio },
+        type: s.tipo_servicio || s.tipo || 'Avería Eléctrica',
+        description: s.descripcion_problema || s.descripcion || s.description || s.detalle || 'Sin descripción registrada',
+        location: { address: s.direccion_servicio || s.direccion || s.location?.address || s.direccion_solicitud || 'Dirección no especificada' },
         isEmergency: Boolean(s.es_urgente || s.es_emergencia),
         materiales_cliente: s.materiales_cliente || null,
         timeline: data.timeline || s.timeline || [],
