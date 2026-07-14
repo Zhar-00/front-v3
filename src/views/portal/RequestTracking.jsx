@@ -40,7 +40,7 @@ const getOperationalStageIndex = (rawStatus) => {
 };
 
 // Componente B: Estado Financiero (Desvinculado del Flujo Operativo)
-const FinancialStatusCard = ({ request, totalAmount, totalPaid, remainingBalance }) => {
+const FinancialStatusCard = ({ request, totalAmount, totalPaid, remainingBalance, payments = [] }) => {
   const getFinancialStatusInfo = () => {
     const estadoPago = (request?.estado_pago || '').toString().toUpperCase();
     const tipoPago = (request?.tipo_pago || '').toString().toUpperCase();
@@ -65,7 +65,23 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid, remainingBalance
       };
     }
 
-    // 2. Adelanto confirmado (Ámbar / Amarillo)
+    // 2. Pago o Adelanto en Revisión (Azul Cielo / Sky)
+    const hasPendingValidation = payments.some(p => ['PENDIENTE', 'EN_REVISION', 'REVISION', 'PENDIENTE_VALIDACION', 'VERIFICANDO', 'PENDIENTE DE VALIDACION', 'EN REVISION'].includes((p.estado || '').toString().toUpperCase())) ||
+      (totalPaid > 0 && !['COMPLETADO', 'VERIFICADO', 'APROBADO', 'PAGADO', 'LIQUIDADO'].includes(estadoPago) && rawStatus === 'COTIZADA');
+
+    if (hasPendingValidation) {
+      return {
+        key: 'EN_REVISION',
+        label: 'Pago en Revisión',
+        badgeClass: 'bg-sky-50 text-sky-700 border-sky-200',
+        dotClass: 'bg-sky-500 animate-pulse',
+        cardBorder: 'border-sky-200/80',
+        iconBg: 'bg-sky-50 text-sky-600 border-sky-100',
+        description: 'Su comprobante de pago ha sido registrado exitosamente y se encuentra en proceso de validación por nuestro equipo de finanzas.'
+      };
+    }
+
+    // 3. Adelanto confirmado (Ámbar / Amarillo)
     const isAdvanceConfirmed =
       estadoPago === 'ADELANTO' ||
       tipoPago === 'ADELANTO' ||
@@ -84,7 +100,7 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid, remainingBalance
       };
     }
 
-    // 3. Pendiente de pago (Gris Neutro)
+    // 4. Pendiente de pago (Gris Neutro)
     return {
       key: 'PENDIENTE_PAGO',
       label: 'Pendiente de pago',
@@ -155,6 +171,8 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid, remainingBalance
                   className={`h-full transition-all duration-700 rounded-full ${
                     statusInfo.key === 'PAGADO'
                       ? 'bg-emerald-500'
+                      : statusInfo.key === 'EN_REVISION'
+                      ? 'bg-sky-500 animate-pulse'
                       : statusInfo.key === 'ADELANTO'
                       ? 'bg-amber-500'
                       : 'bg-slate-300'
@@ -165,45 +183,100 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid, remainingBalance
             </div>
 
             <div className="grid grid-cols-1 gap-2 pt-1">
-              <div className="p-3 rounded-xl border border-slate-200/60 bg-slate-50 flex justify-between items-center text-xs shadow-soft-sm">
-                <div>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Adelanto Mínimo (30%)</p>
-                  <p className="font-black text-slate-800 mt-0.5">S/ {(totalAmount * 0.30).toFixed(2)}</p>
+              {totalPaid >= totalAmount - 0.01 ? (
+                /* Escenario C: Pago Total 100% */
+                <div className="p-3 rounded-xl border border-slate-200/60 bg-slate-50 flex justify-between items-center text-xs shadow-soft-sm">
+                  <div>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Pago Total</p>
+                    <p className="font-black text-slate-800 mt-0.5">S/ {totalAmount.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    {statusInfo.key === 'EN_REVISION' ? (
+                      <span className="bg-sky-50 text-sky-700 text-[9px] font-extrabold px-2 py-0.5 rounded border border-sky-200 uppercase flex items-center">
+                        <Clock className="w-3 h-3 mr-1" /> En Revisión
+                      </span>
+                    ) : (
+                      <span className="bg-emerald-50 text-emerald-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-emerald-100 uppercase flex items-center">
+                        <CheckCircle2 className="w-3 h-3 mr-1" /> Abonado
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  {totalPaid >= (totalAmount * 0.30) - 0.01 ? (
-                    <span className="bg-emerald-50 text-emerald-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-emerald-100 uppercase flex items-center">
-                      <CheckCircle2 className="w-3 h-3 mr-1" /> Abonado
-                    </span>
-                  ) : totalPaid > 0 ? (
-                    <span className="bg-indigo-50 text-indigo-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-indigo-100 uppercase flex items-center">
-                      <Clock className="w-3 h-3 mr-1" /> Parcial
-                    </span>
-                  ) : (
-                    <span className="bg-amber-50 text-amber-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-amber-100 uppercase flex items-center">
-                      <Clock className="w-3 h-3 mr-1" /> Pendiente
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl border border-slate-200/60 bg-slate-50 flex justify-between items-center text-xs shadow-soft-sm">
-                <div>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Saldo Restante (50%)</p>
-                  <p className="font-black text-slate-800 mt-0.5">S/ {(totalAmount * 0.50).toFixed(2)}</p>
-                </div>
-                <div>
-                  {totalPaid >= totalAmount - 0.01 ? (
-                    <span className="bg-emerald-50 text-emerald-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-emerald-100 uppercase flex items-center">
-                      <CheckCircle2 className="w-3 h-3 mr-1" /> Cancelado
-                    </span>
-                  ) : (
-                    <span className="bg-rose-50 text-rose-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-rose-100 uppercase flex items-center">
-                      <AlertTriangle className="w-3 h-3 mr-1" /> Faltante
-                    </span>
-                  )}
-                </div>
-              </div>
+              ) : totalPaid > (totalAmount * 0.30) + 0.01 ? (
+                /* Escenario A: Adelanto realizado mayor al 30% y menor al 100% */
+                <>
+                  <div className="p-3 rounded-xl border border-slate-200/60 bg-slate-50 flex justify-between items-center text-xs shadow-soft-sm">
+                    <div>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Adelanto Realizado</p>
+                      <p className="font-black text-slate-800 mt-0.5">S/ {totalPaid.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      {statusInfo.key === 'EN_REVISION' ? (
+                        <span className="bg-sky-50 text-sky-700 text-[9px] font-extrabold px-2 py-0.5 rounded border border-sky-200 uppercase flex items-center">
+                          <Clock className="w-3 h-3 mr-1" /> En Revisión
+                        </span>
+                      ) : (
+                        <span className="bg-emerald-50 text-emerald-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-emerald-100 uppercase flex items-center">
+                          <CheckCircle2 className="w-3 h-3 mr-1" /> Abonado
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-xl border border-slate-200/60 bg-slate-50 flex justify-between items-center text-xs shadow-soft-sm">
+                    <div>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Saldo Restante</p>
+                      <p className="font-black text-slate-800 mt-0.5">S/ {remainingBalance.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <span className="bg-rose-50 text-rose-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-rose-100 uppercase flex items-center">
+                        <AlertTriangle className="w-3 h-3 mr-1" /> Faltante
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* Escenario B: Adelanto mínimo estricto (30%) o menos */
+                <>
+                  <div className="p-3 rounded-xl border border-slate-200/60 bg-slate-50 flex justify-between items-center text-xs shadow-soft-sm">
+                    <div>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Adelanto Mínimo (30%)</p>
+                      <p className="font-black text-slate-800 mt-0.5">S/ {(totalAmount * 0.30).toFixed(2)}</p>
+                    </div>
+                    <div>
+                      {totalPaid >= (totalAmount * 0.30) - 0.01 ? (
+                        statusInfo.key === 'EN_REVISION' ? (
+                          <span className="bg-sky-50 text-sky-700 text-[9px] font-extrabold px-2 py-0.5 rounded border border-sky-200 uppercase flex items-center">
+                            <Clock className="w-3 h-3 mr-1" /> En Revisión
+                          </span>
+                        ) : (
+                          <span className="bg-emerald-50 text-emerald-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-emerald-100 uppercase flex items-center">
+                            <CheckCircle2 className="w-3 h-3 mr-1" /> Abonado
+                          </span>
+                        )
+                      ) : totalPaid > 0 ? (
+                        <span className="bg-indigo-50 text-indigo-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-indigo-100 uppercase flex items-center">
+                          <Clock className="w-3 h-3 mr-1" /> Parcial
+                        </span>
+                      ) : (
+                        <span className="bg-amber-50 text-amber-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-amber-100 uppercase flex items-center">
+                          <Clock className="w-3 h-3 mr-1" /> Pendiente
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-xl border border-slate-200/60 bg-slate-50 flex justify-between items-center text-xs shadow-soft-sm">
+                    <div>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Saldo Restante (70%)</p>
+                      <p className="font-black text-slate-800 mt-0.5">S/ {(totalAmount * 0.70).toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <span className="bg-rose-50 text-rose-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-rose-100 uppercase flex items-center">
+                        <AlertTriangle className="w-3 h-3 mr-1" /> Faltante
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {payments.length === 0 ? (
@@ -215,15 +288,16 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid, remainingBalance
                 <h4 className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Historial de Transacciones</h4>
                 <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
                   {payments.map(pago => {
-                    const isVerified = pago.estado === 'VERIFICADO' || pago.estado === 'Aprobado' || pago.estado === 'COMPLETADO';
-                    const isRejected = pago.estado === 'RECHAZADO';
+                    const isVerified = ['VERIFICADO', 'APROBADO', 'COMPLETADO'].includes((pago.estado || '').toString().toUpperCase());
+                    const isRejected = ['RECHAZADO', 'CANCELADO'].includes((pago.estado || '').toString().toUpperCase());
+                    const isPending = !isVerified && !isRejected;
                     return (
                       <div key={pago.id_pago || pago.id || Math.random()} className="flex items-center justify-between p-2.5 bg-slate-50/80 border border-slate-200/60 rounded-xl text-xs">
                         <div className="flex items-center space-x-2">
                           <div className={`p-1.5 rounded-lg ${
                             isVerified ? 'bg-emerald-100 text-emerald-600' :
                             isRejected ? 'bg-rose-100 text-rose-600' :
-                            'bg-amber-100 text-amber-600'
+                            'bg-sky-100 text-sky-600'
                           }`}>
                             {isVerified ? <CheckCircle2 className="w-3.5 h-3.5" /> : isRejected ? <XCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
                           </div>
@@ -237,9 +311,9 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid, remainingBalance
                         <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border uppercase ${
                           isVerified ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                           isRejected ? 'bg-rose-50 text-rose-600 border-rose-100' :
-                          'bg-amber-50 text-amber-600 border-amber-100'
+                          'bg-sky-50 text-sky-700 border-sky-200'
                         }`}>
-                          {pago.estado === 'PENDIENTE' ? 'En Revisión' : pago.estado || 'Pendiente'}
+                          {isPending ? 'En Revisión' : pago.estado || 'Pendiente'}
                         </span>
                       </div>
                     );
@@ -334,6 +408,8 @@ const RequestTracking = () => {
 
   const [request, setRequest] = useState(null);
   const [payments, setPayments] = useState([]);
+  const [paymentModal, setPaymentModal] = useState(null);
+  const [alertModal, setAlertModal] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [evidences, setEvidences] = useState([]);
@@ -389,9 +465,21 @@ const RequestTracking = () => {
       let fetchedPayments = [];
       try {
         const payData = await api.finances.getPaymentsByRequest(id);
-        fetchedPayments = Array.isArray(payData) ? payData : (payData?.data || []);
+        fetchedPayments = Array.isArray(payData) ? payData : (payData?.data || payData?.pagos || payData?.list || []);
       } catch (payErr) {
         console.warn("No se pudieron cargar los pagos, aplicando inferencia si es posible", payErr);
+      }
+
+      // Recuperar pagos en revisión de localStorage para reflejar al instante el pago tras registrarlo
+      try {
+        const localPending = JSON.parse(localStorage.getItem(`sigesto_pending_payments_${id}`) || '[]');
+        if (Array.isArray(localPending) && localPending.length > 0) {
+          const serverIds = new Set(fetchedPayments.map(p => String(p.id_pago || p.id)));
+          const unverifiedLocal = localPending.filter(lp => !serverIds.has(String(lp.id_pago || lp.id)));
+          fetchedPayments = [...unverifiedLocal, ...fetchedPayments];
+        }
+      } catch (e) {
+        console.warn("Error leyendo pagos locales en revisión", e);
       }
 
       // Fallback: Inferir pagos si el backend no los provee pero el estado confirma que ya se pagaron
@@ -457,17 +545,25 @@ const RequestTracking = () => {
   const handleSubmitPayment = async (e) => {
     e.preventDefault();
     if (!paymentAmount || isNaN(paymentAmount) || Number(paymentAmount) <= 0) {
-      alert('Por favor, ingrese un monto válido.');
+      setAlertModal({ message: 'Por favor, ingrese un monto válido.' });
       return;
     }
     const totalAmount = request?.quotation?.total || 0;
     const minAdvance = totalAmount * 0.30;
-    if (totalAmount > 0 && Number(paymentAmount) < minAdvance - 0.01) {
-      alert(`El pago mínimo permitido es el 30% del total (S/ ${minAdvance.toFixed(2)}). Puede abonar desde el 30% hasta el 100% para liquidación total.`);
+    if (totalPaid <= 0.01 && totalAmount > 0 && Number(paymentAmount) < minAdvance - 0.01) {
+      setAlertModal({ message: `El primer pago (adelanto) debe ser como mínimo el 30% del total (S/ ${minAdvance.toFixed(2)}). Puede abonar desde el 30% hasta el 100% para liquidación total.` });
       return;
     }
-    if (!paymentOperation && !paymentFile) {
-      alert('Debe ingresar el número de operación o adjuntar el comprobante de pago.');
+    if (totalPaid > 0.01 && Math.abs(Number(paymentAmount) - remainingBalance) > 0.05) {
+      setAlertModal({ message: `Solo se permite el pago del monto restante completo (S/ ${remainingBalance.toFixed(2)}). No se admiten abonos en partes tras un adelanto previo.` });
+      return;
+    }
+    if (!paymentOperation || !paymentOperation.trim()) {
+      setAlertModal({ message: 'El número de operación bancaria es obligatorio.' });
+      return;
+    }
+    if (!paymentFile) {
+      setAlertModal({ message: 'Debe adjuntar obligatoriamente el comprobante de pago (imagen o PDF).' });
       return;
     }
 
@@ -476,22 +572,43 @@ const RequestTracking = () => {
       const result = await api.finances.registerAdvance(id, {
         monto_pagado: Number(paymentAmount),
         metodo_pago: paymentMethod,
-        nro_operacion: paymentOperation || 'Adjunto',
+        nro_operacion: paymentOperation.trim(),
         comprobanteFile: paymentFile
       });
 
-      if (Number(paymentAmount) >= totalAmount - 0.01 || result?.es_liquidacion_total) {
-        alert('¡Liquidación Total (100%)! Has completado el pago de la cotización exitosamente.');
-      } else {
-        alert('¡Pago registrado exitosamente! Su comprobante está en revisión.');
+      const isTotal = Number(paymentAmount) >= remainingBalance - 0.01 || Number(paymentAmount) + totalPaid >= totalAmount - 0.01 || result?.es_liquidacion_total;
+
+      // Guardar el pago localmente para que FinancialStatusCard lo refleje EN REVISIÓN al instante
+      try {
+        const pendingPaymentObj = {
+          id_pago: result?.data?.id_pago || result?.pago?.id_pago || `rev-${Date.now()}`,
+          concepto: isTotal ? 'Liquidación Total (100%)' : 'Adelanto / Abono de Cotización',
+          monto_pagado: Number(paymentAmount),
+          metodo_pago: paymentMethod,
+          nro_operacion: paymentOperation.trim(),
+          estado: 'EN REVISION',
+          fecha_pago: new Date().toISOString()
+        };
+        const existingLocal = JSON.parse(localStorage.getItem(`sigesto_pending_payments_${id}`) || '[]');
+        localStorage.setItem(`sigesto_pending_payments_${id}`, JSON.stringify([pendingPaymentObj, ...existingLocal]));
+      } catch (e) {
+        console.warn("No se pudo guardar pago en revisión localmente", e);
       }
+
+      setPaymentModal({
+        isTotal,
+        monto: Number(paymentAmount),
+        metodo: paymentMethod,
+        nroOperacion: paymentOperation.trim()
+      });
+
       await loadRequest();
       
       setPaymentAmount('');
       setPaymentOperation('');
       setPaymentFile(null);
     } catch (err) {
-      alert(err.message || 'Error al registrar el pago.');
+      setAlertModal({ message: err.message || 'Error al registrar el pago.' });
     } finally {
       setSubmittingPayment(false);
     }
@@ -510,6 +627,23 @@ const RequestTracking = () => {
     .filter(p => p.estado !== 'RECHAZADO' && p.estado !== 'CANCELADO' && p.estado !== 'Rechazado' && p.estado !== 'Cancelado')
     .reduce((sum, p) => sum + parseFloat(p.monto_pagado || p.monto || 0), 0);
   const remainingBalance = Math.max(0, totalAmount - totalPaid);
+
+  useEffect(() => {
+    if (totalPaid > 0.01 && remainingBalance > 0) {
+      setPaymentAmount(remainingBalance.toFixed(2));
+    }
+  }, [totalPaid, remainingBalance]);
+
+  const estadoPagoMain = (request?.estado_pago || '').toString().toUpperCase();
+  const tipoPagoMain = (request?.tipo_pago || '').toString().toUpperCase();
+  const rawStatusMain = (request?.statusRaw || request?.status || '').toString().toUpperCase();
+
+  const isFullyPaid =
+    (estadoPagoMain === 'COMPLETADO' && (tipoPagoMain === 'FINAL' || tipoPagoMain === 'TOTAL')) ||
+    estadoPagoMain === 'PAGADO' ||
+    estadoPagoMain === 'LIQUIDADO' ||
+    rawStatusMain === 'FINALIZADA' ||
+    (totalAmount > 0 && remainingBalance <= 0.01 && totalPaid >= totalAmount - 0.01);
 
   if (loading) {
     return (
@@ -539,7 +673,78 @@ const RequestTracking = () => {
   }
 
   return (
-    <div className="space-y-6 text-left font-sans animate-fade-in">
+    <div className="space-y-6 text-left font-sans animate-fade-in relative">
+      {paymentModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-7 shadow-2xl space-y-6 text-center relative overflow-hidden animate-scale-in">
+            <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100 flex items-center justify-center mx-auto shadow-soft-sm">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+            
+            <div className="space-y-2">
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest bg-sky-50 text-sky-700 border border-sky-200">
+                <span className="w-1.5 h-1.5 rounded-full mr-1.5 bg-sky-500 animate-pulse"></span>
+                Pago en Revisión
+              </span>
+              <h3 className="font-display font-black text-slate-800 text-lg md:text-xl">
+                {paymentModal.isTotal ? '¡Liquidación Total (100%)!' : '¡Adelanto Registrado con Éxito!'}
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed px-2">
+                {paymentModal.isTotal
+                  ? 'Has completado el registro del pago por el 100% de la cotización. Tu comprobante se encuentra en proceso de validación y revisión por nuestro equipo de finanzas.'
+                  : 'Tu pago de adelanto ha sido registrado correctamente. Nuestro equipo de finanzas verificará el comprobante para confirmar y validar la transacción.'}
+              </p>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-xs space-y-2 text-left">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Monto Registrado</span>
+                <span className="font-extrabold text-emerald-600 text-sm">S/ {paymentModal.monto.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-slate-500 font-medium">Método</span>
+                <span className="font-bold text-slate-700">{paymentModal.metodo}</span>
+              </div>
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-slate-500 font-medium">Estado de Validación</span>
+                <span className="font-bold text-sky-600 flex items-center gap-1">
+                  <Clock className="w-3 h-3 animate-spin" /> En Revisión
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setPaymentModal(null)}
+              className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-soft transition-soft cursor-pointer flex items-center justify-center space-x-2"
+            >
+              <span>Entendido y Continuar</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {alertModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-5 text-center animate-scale-in">
+            <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl border border-amber-100 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div className="space-y-1.5">
+              <h4 className="font-display font-extrabold text-slate-800 text-sm">Atención</h4>
+              <p className="text-xs text-slate-500 leading-relaxed">{alertModal.message}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAlertModal(null)}
+              className="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition-soft cursor-pointer"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
       
       {/* Cabecera del Servicio */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -576,8 +781,8 @@ const RequestTracking = () => {
         )}
       </div>
 
-      {/* 1. SEPARACIÓN VISUAL: FLUJO OPERATIVO Y ESTADO FINANCIERO */}
-      {isCancelled ? (
+      {/* 1. SEPARACIÓN VISUAL: BANNER SI ESTÁ ANULADO */}
+      {isCancelled && (
         <div className="bg-rose-50 border border-rose-100 rounded-3xl p-6 flex items-start space-x-3 text-rose-800 animate-slide-up">
           <XCircle className="w-6 h-6 text-rose-500 shrink-0 mt-0.5" />
           <div>
@@ -587,30 +792,17 @@ const RequestTracking = () => {
             </p>
           </div>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-slide-up">
-          {/* Componente A: Flujo Operativo (2 Columnas en lg) */}
-          <div className="lg:col-span-2 flex">
-            <OperationalStepper request={request} currentOperationalIndex={currentOperationalIndex} />
-          </div>
-
-          {/* Componente B: Estado Financiero (1 Columna en lg) */}
-          <div className="lg:col-span-1 flex">
-            <FinancialStatusCard
-              request={request}
-              totalAmount={totalAmount}
-              totalPaid={totalPaid}
-              remainingBalance={remainingBalance}
-            />
-          </div>
-        </div>
       )}
 
-      {/* Fila inferior: Detalles y Técnico */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* MASTER 12-COLUMN DASHBOARD LAYOUT: 8 Columnas Principal / 4 Columnas Lateral */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start animate-slide-up">
         
-        {/* Columna Principal (Detalles) */}
-        <div className="lg:col-span-2 space-y-6">
+        {/* COLUMNA PRINCIPAL (8 Columnas): Flujo Operativo, Descripción, Cotización/Pago, Timeline */}
+        <div className="lg:col-span-8 space-y-6 lg:space-y-8">
+          {/* 1. Flujo Operativo */}
+          {!isCancelled && (
+            <OperationalStepper request={request} currentOperationalIndex={currentOperationalIndex} />
+          )}
           <div className="bg-white border border-slate-200/60 rounded-3xl p-6 shadow-soft space-y-4">
             <h3 className="font-display font-bold text-sm text-slate-800">Descripción del Reporte</h3>
             <p className="text-xs text-slate-500 leading-relaxed bg-slate-50 p-4 rounded-2xl border border-slate-100/60">
@@ -655,14 +847,14 @@ const RequestTracking = () => {
                     request.quotation.status === 'APROBADA'
                       ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                       : request.quotation.status === 'ENVIADA'
-                      ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                      ? 'bg-sky-50 text-sky-700 border-sky-200'
                       : 'bg-amber-50 text-amber-700 border-amber-200'
                   }`}>
                     <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
                       request.quotation.status === 'APROBADA'
                         ? 'bg-emerald-500'
                         : request.quotation.status === 'ENVIADA'
-                        ? 'bg-indigo-500 animate-pulse'
+                        ? 'bg-sky-500 animate-pulse'
                         : 'bg-amber-500'
                     }`}></span>
                     {request.quotation.status}
@@ -720,23 +912,22 @@ const RequestTracking = () => {
 
 
               
-              {request.statusRaw === 'COTIZADA' && !isQuotationAccepted && (
+              {request.statusRaw === 'COTIZADA' && !isQuotationAccepted && totalPaid <= 0.01 && !isFullyPaid && (
                 <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row gap-3">
                   <button
                     onClick={() => {
                       setIsQuotationAccepted(true);
-                      if (request?.quotation?.total) {
-                        setPaymentAmount((parseFloat(request.quotation.total) * 0.5).toFixed(2));
-                      }
+                      const total = parseFloat(request?.quotation?.total || totalAmount || 0);
+                      setPaymentAmount((total * 0.30).toFixed(2));
                     }}
-                    className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-soft hover-lift cursor-pointer flex items-center justify-center space-x-2 transition-soft border border-indigo-700"
+                    className="flex-1 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-soft hover-lift cursor-pointer flex items-center justify-center space-x-2 transition-soft border border-emerald-700"
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     <span>Aprobar Cotización y Pagar</span>
                   </button>
                   <button
                     onClick={handleRejectQuotation}
-                    className="flex-1 py-3.5 bg-rose-50 hover:bg-rose-100/80 text-rose-600 font-bold text-xs rounded-xl transition-soft cursor-pointer border border-rose-200/60 flex items-center justify-center space-x-2"
+                    className="flex-1 py-3.5 bg-white hover:bg-rose-50 text-rose-600 font-bold text-xs rounded-xl transition-soft cursor-pointer border border-slate-200 hover:border-rose-200 flex items-center justify-center space-x-2 shadow-soft-sm"
                   >
                     <XCircle className="w-4 h-4" />
                     <span>Rechazar Presupuesto</span>
@@ -744,235 +935,343 @@ const RequestTracking = () => {
                 </div>
               )}
 
-              {request.statusRaw === 'COTIZADA' && isQuotationAccepted && (
-                <div className="pt-5 border-t border-slate-150 animate-slide-up space-y-4">
-                  <div className="flex items-center space-x-2 pb-2">
-                    <div className="w-1.5 h-4 bg-indigo-500 rounded-full"></div>
-                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest">Registrar Adelanto (50%)</h4>
+              {request.quotation && !isFullyPaid && (
+                (request.statusRaw === 'COTIZADA' && isQuotationAccepted) ||
+                totalPaid > 0.01 ||
+                ['APROBADA', 'REVISION_PAGO', 'EN_PROCESO', 'ASIGNADA', 'EN CURSO'].includes((request.statusRaw || request.status || '').toString().toUpperCase())
+              ) && (
+                <div className="pt-5 border-t border-slate-150 animate-slide-up space-y-5">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-1.5 h-4 bg-emerald-500 rounded-full"></div>
+                      <h4 className="text-xs md:text-sm font-black text-slate-800 uppercase tracking-widest">
+                        Registrar Pago / Abono de Cotización
+                      </h4>
+                    </div>
+                    {totalPaid > 0.01 ? (
+                      <span className="text-[10px] font-extrabold text-amber-800 bg-amber-100 border border-amber-200/80 px-2.5 py-1 rounded-lg">
+                        Saldo Pendiente: S/ {remainingBalance.toFixed(2)}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2.5 py-1 rounded-lg">
+                        Adelanto mín. 30% — Pago Total 100%
+                      </span>
+                    )}
                   </div>
 
-                  {bankAccount && (
-                    <div className="mb-6 p-6 bg-white border-2 border-indigo-100 rounded-2xl space-y-4 text-xs text-slate-600 relative overflow-hidden animate-fade-in shadow-soft-sm">
-                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                        <h5 className="font-bold text-slate-800 flex items-center text-xs md:text-sm">
-                          <CreditCard className="w-4.5 h-4.5 mr-2 text-indigo-600 shrink-0" />
-                          Datos para Transferencia Bancaria
-                        </h5>
-                        <span className="text-[9px] font-extrabold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-150">
-                          Recaudación Directa
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-0.5">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Titular de la Cuenta</span>
-                          <span className="font-bold text-slate-800 text-xs">{bankAccount.titular}</span>
-                        </div>
-                        <div className="space-y-0.5">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Entidad Financiera</span>
-                          <span className="font-bold text-slate-800 text-xs">{bankAccount.banco}</span>
-                        </div>
-                        <div className="space-y-1 relative">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Nro. de Cuenta ({bankAccount.tipo_cuenta})</span>
-                          <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
-                            <span className="font-mono text-slate-800 font-bold tracking-wider text-xs">{bankAccount.numero_cuenta}</span>
-                            <button
-                              type="button"
-                              onClick={() => copyToClipboard(bankAccount.numero_cuenta, 'cuenta')}
-                              className="p-1 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 text-slate-500 hover:text-indigo-600 transition-soft cursor-pointer flex items-center justify-center shrink-0 shadow-sm"
-                              title="Copiar Nro de Cuenta"
-                            >
-                              {copiedField === 'cuenta' ? <Check className="w-3.5 h-3.5 text-emerald-500 animate-scale-in" /> : <Copy className="w-3.5 h-3.5" />}
-                            </button>
-                            {copiedField === 'cuenta' && (
-                              <span className="text-[9px] font-bold text-emerald-600 animate-fade-in absolute right-10 top-[22px] bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
-                                ¡Copiado!
-                              </span>
-                            )}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-1">
+                    {bankAccount && (
+                      <div className="lg:col-span-5 bg-gradient-to-br from-indigo-50/70 via-slate-50/60 to-indigo-50/40 border border-indigo-100/80 rounded-2xl p-5 md:p-6 flex flex-col justify-between shadow-soft-sm relative overflow-hidden">
+                        <div>
+                          <div className="flex items-center justify-between border-b border-indigo-100/60 pb-3 mb-4">
+                            <h5 className="font-extrabold text-indigo-950 flex items-center text-xs md:text-sm">
+                              <CreditCard className="w-4 h-4 mr-2 text-indigo-600 shrink-0" />
+                              Datos de Recaudación
+                            </h5>
+                            <span className="text-[9px] font-extrabold bg-white text-indigo-700 px-2 py-0.5 rounded-md border border-indigo-150 shadow-2xs">
+                              Directa
+                            </span>
                           </div>
-                        </div>
-                        <div className="space-y-1 relative">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Código de Cuenta Interbancario (CCI)</span>
-                          <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
-                            <span className="font-mono text-slate-800 font-bold tracking-wider text-xs">{bankAccount.cci}</span>
-                            <button
-                              type="button"
-                              onClick={() => copyToClipboard(bankAccount.cci, 'cci')}
-                              className="p-1 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 text-slate-500 hover:text-indigo-600 transition-soft cursor-pointer flex items-center justify-center shrink-0 shadow-sm"
-                              title="Copiar CCI"
-                            >
-                              {copiedField === 'cci' ? <Check className="w-3.5 h-3.5 text-emerald-500 animate-scale-in" /> : <Copy className="w-3.5 h-3.5" />}
-                            </button>
-                            {copiedField === 'cci' && (
-                              <span className="text-[9px] font-bold text-emerald-600 animate-fade-in absolute right-10 top-[22px] bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
-                                ¡Copiado!
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="space-y-0.5">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Moneda</span>
-                          <span className="font-bold text-slate-800 text-xs">{bankAccount.moneda}</span>
-                        </div>
-                      </div>
-                      <div className="bg-indigo-50/50 border border-indigo-100/30 p-2.5 rounded-xl text-[10px] text-indigo-700 font-semibold flex items-center space-x-1.5 mt-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0"></span>
-                        <span>{bankAccount.mensaje}</span>
-                      </div>
-                    </div>
-                  )}
 
-                  <form onSubmit={handleSubmitPayment} className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">Monto a Depositar (S/)</label>
-                        <div className="relative rounded-xl shadow-soft-sm">
-                          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                            <DollarSign className="w-4 h-4 text-slate-400" />
+                          <div className="space-y-3.5 text-xs">
+                            <div>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Titular de la Cuenta</span>
+                              <span className="font-bold text-slate-800 text-xs mt-0.5 block">{bankAccount.titular}</span>
+                            </div>
+
+                            <div>
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Entidad Financiera</span>
+                              <span className="font-bold text-slate-800 text-xs mt-0.5 block">{bankAccount.banco}</span>
+                            </div>
+
+                            <div className="pt-2 border-t border-indigo-100/50 space-y-3">
+                              <div className="flex items-center justify-between bg-white/90 border border-indigo-100/80 rounded-xl px-3.5 py-2.5 shadow-2xs hover:border-indigo-300 transition-soft">
+                                <div>
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Nro. de Cuenta ({bankAccount.tipo_cuenta})</span>
+                                  <span className="font-mono font-extrabold text-indigo-950 text-xs mt-0.5 block tracking-wide">{bankAccount.numero_cuenta}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => copyToClipboard(bankAccount.numero_cuenta, 'cuenta')}
+                                  className="px-2.5 py-1.5 bg-indigo-50/80 hover:bg-indigo-600 hover:text-white text-indigo-700 font-bold text-[10px] rounded-lg border border-indigo-200/60 transition-soft cursor-pointer flex items-center gap-1 shrink-0 shadow-2xs"
+                                  title="Copiar Nro de Cuenta"
+                                >
+                                  {copiedField === 'cuenta' ? (
+                                    <>
+                                      <Check className="w-3 h-3 text-emerald-500" />
+                                      <span className="text-emerald-600">¡Copiado!</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="w-3 h-3" />
+                                      <span>Copiar</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+
+                              <div className="flex items-center justify-between bg-white/90 border border-indigo-100/80 rounded-xl px-3.5 py-2.5 shadow-2xs hover:border-indigo-300 transition-soft">
+                                <div>
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Código Interbancario (CCI)</span>
+                                  <span className="font-mono font-extrabold text-indigo-950 text-xs mt-0.5 block tracking-wide">{bankAccount.cci}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => copyToClipboard(bankAccount.cci, 'cci')}
+                                  className="px-2.5 py-1.5 bg-indigo-50/80 hover:bg-indigo-600 hover:text-white text-indigo-700 font-bold text-[10px] rounded-lg border border-indigo-200/60 transition-soft cursor-pointer flex items-center gap-1 shrink-0 shadow-2xs"
+                                  title="Copiar CCI"
+                                >
+                                  {copiedField === 'cci' ? (
+                                    <>
+                                      <Check className="w-3 h-3 text-emerald-500" />
+                                      <span className="text-emerald-600">¡Copiado!</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="w-3 h-3" />
+                                      <span>Copiar</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="pt-1 flex items-center justify-between">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Moneda</span>
+                              <span className="font-extrabold text-slate-800 text-xs">{bankAccount.moneda}</span>
+                            </div>
                           </div>
-                          <input
-                            type="number"
-                            step="0.01"
-                            required
-                            value={paymentAmount}
-                            onChange={(e) => setPaymentAmount(e.target.value)}
-                            className="w-full pl-9 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-soft"
-                            placeholder="Ej: 100.00"
-                          />
+                        </div>
+
+                        <div className="bg-white/80 border border-indigo-100 p-3 rounded-xl text-[11px] text-slate-600 font-medium flex items-start gap-2 mt-4 shadow-2xs">
+                          <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0 mt-1"></span>
+                          <span className="leading-relaxed">{bankAccount.mensaje || 'Realice su transferencia por el monto deseado y registre el número de comprobante al lado.'}</span>
                         </div>
                       </div>
-                      <div className="space-y-1.5">
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">Método de Pago</label>
-                        <div className="relative">
-                          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                            <CreditCard className="w-4 h-4 text-slate-400" />
+                    )}
+
+                    <div className="lg:col-span-7 bg-white border border-slate-200/80 rounded-2xl p-5 md:p-6 shadow-soft-sm flex flex-col justify-between">
+                      <form onSubmit={handleSubmitPayment} className="space-y-5">
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                              1. Seleccionar o Ingresar Monto (S/)
+                            </label>
+                            <span className="text-[10px] font-bold text-indigo-600">
+                              ⚡ Carga Rápida
+                            </span>
                           </div>
-                          <select
-                            value={paymentMethod}
-                            onChange={(e) => setPaymentMethod(e.target.value)}
-                            className="w-full pl-9 pr-8 py-3 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-soft appearance-none cursor-pointer"
+
+                          {totalPaid > 0.01 ? (
+                            <div className="mb-4 bg-amber-50/90 border border-amber-200/80 rounded-xl p-3.5 flex items-center justify-between gap-3 shadow-2xs">
+                              <div className="flex items-center gap-2.5">
+                                <div className="p-2 bg-amber-500/15 text-amber-700 rounded-lg shrink-0">
+                                  <DollarSign className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <h6 className="text-xs font-black text-amber-950">Liquidación de Saldo Faltante</h6>
+                                  <p className="text-[11px] text-amber-700 font-medium">No se admiten abonos en partes. Pago único del 100% restante.</p>
+                                </div>
+                              </div>
+                              <span className="text-xs font-black text-amber-900 bg-amber-200/70 px-3 py-1.5 rounded-lg border border-amber-300/60 shrink-0">
+                                S/ {remainingBalance.toFixed(2)}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-3 gap-2 mb-3">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const total = parseFloat(request?.quotation?.total || totalAmount || 0);
+                                  setPaymentAmount((total * 0.30).toFixed(2));
+                                }}
+                                className={`px-3 py-2 rounded-xl text-xs font-bold border transition-soft cursor-pointer flex flex-col items-center justify-center ${
+                                  Math.abs(parseFloat(paymentAmount || 0) - parseFloat(request?.quotation?.total || totalAmount || 0) * 0.30) < 0.05
+                                    ? 'bg-indigo-600 text-white border-indigo-700 shadow-soft-sm'
+                                    : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-200 hover:border-indigo-200'
+                                }`}
+                              >
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-80">30% (Mínimo)</span>
+                                <span className="text-xs mt-0.5">S/ {(parseFloat(request?.quotation?.total || totalAmount || 0) * 0.30).toFixed(2)}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const total = parseFloat(request?.quotation?.total || totalAmount || 0);
+                                  setPaymentAmount((total * 0.50).toFixed(2));
+                                }}
+                                className={`px-3 py-2 rounded-xl text-xs font-bold border transition-soft cursor-pointer flex flex-col items-center justify-center ${
+                                  Math.abs(parseFloat(paymentAmount || 0) - parseFloat(request?.quotation?.total || totalAmount || 0) * 0.50) < 0.05
+                                    ? 'bg-indigo-600 text-white border-indigo-700 shadow-soft-sm'
+                                    : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-200 hover:border-indigo-200'
+                                }`}
+                              >
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-80">50% (Mitad)</span>
+                                <span className="text-xs mt-0.5">S/ {(parseFloat(request?.quotation?.total || totalAmount || 0) * 0.50).toFixed(2)}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const total = parseFloat(request?.quotation?.total || totalAmount || 0);
+                                  setPaymentAmount(total.toFixed(2));
+                                }}
+                                className={`px-3 py-2 rounded-xl text-xs font-bold border transition-soft cursor-pointer flex flex-col items-center justify-center ${
+                                  Math.abs(parseFloat(paymentAmount || 0) - parseFloat(request?.quotation?.total || totalAmount || 0)) < 0.05
+                                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-soft-sm'
+                                    : 'bg-slate-50 hover:bg-emerald-50 text-slate-700 border-slate-200 hover:border-emerald-200'
+                                }`}
+                              >
+                                <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-80">100% (Total)</span>
+                                <span className="text-xs mt-0.5">S/ {parseFloat(request?.quotation?.total || totalAmount || 0).toFixed(2)}</span>
+                              </button>
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <div className="relative rounded-xl shadow-soft-sm">
+                                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                                  <DollarSign className="w-4 h-4 text-slate-400" />
+                                </div>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min={totalPaid <= 0.01 ? ((request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0) * 0.30).toFixed(2) : remainingBalance.toFixed(2)}
+                                  max={remainingBalance.toFixed(2)}
+                                  required
+                                  readOnly={totalPaid > 0.01}
+                                  value={paymentAmount}
+                                  onChange={(e) => setPaymentAmount(e.target.value)}
+                                  onBlur={(e) => {
+                                    const val = parseFloat(e.target.value);
+                                    if (totalPaid > 0.01) {
+                                      setPaymentAmount(remainingBalance.toFixed(2));
+                                    } else {
+                                      const minVal = (request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0) * 0.30;
+                                      if (!isNaN(val) && val < minVal && e.target.value !== '') {
+                                        setPaymentAmount(minVal.toFixed(2));
+                                      } else if (!isNaN(val) && val > remainingBalance) {
+                                        setPaymentAmount(remainingBalance.toFixed(2));
+                                      }
+                                    }
+                                  }}
+                                  className={`w-full pl-9 pr-4 py-3 border rounded-xl text-xs font-bold transition-soft ${
+                                    totalPaid > 0.01
+                                      ? 'bg-slate-100 border-slate-300 text-slate-700 cursor-not-allowed focus:outline-none'
+                                      : totalPaid <= 0.01 && paymentAmount !== '' && Number(paymentAmount) < ((request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0) * 0.30 - 0.01)
+                                      ? 'bg-white border-rose-400 focus:border-rose-500 focus:ring-rose-500/10 text-rose-600 focus:outline-none focus:ring-4'
+                                      : 'bg-white border-slate-200 focus:border-indigo-500 focus:ring-indigo-500/10 text-slate-800 focus:outline-none focus:ring-4'
+                                  }`}
+                                  placeholder={totalPaid > 0.01 ? `S/ ${remainingBalance.toFixed(2)}` : `Mín. S/ ${((request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0) * 0.30).toFixed(2)}`}
+                                />
+                              </div>
+                              {totalPaid <= 0.01 && paymentAmount !== '' && Number(paymentAmount) < ((request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0) * 0.30 - 0.01) && (
+                                <p className="text-[11px] text-rose-600 font-bold mt-1.5 flex items-center gap-1 animate-pulse">
+                                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Mínimo permitido: 30% (S/ {((request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0) * 0.30).toFixed(2)})
+                                </p>
+                              )}
+                              {totalPaid <= 0.01 && Number(paymentAmount) > remainingBalance + 0.01 && (
+                                <p className="text-[11px] text-rose-600 font-bold mt-1.5 flex items-center gap-1 animate-pulse">
+                                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Excede el saldo (S/ {remainingBalance.toFixed(2)})
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="relative">
+                              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                                <CreditCard className="w-4 h-4 text-slate-400" />
+                              </div>
+                              <select
+                                value={paymentMethod}
+                                onChange={(e) => setPaymentMethod(e.target.value)}
+                                className="w-full pl-9 pr-8 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-soft appearance-none cursor-pointer"
+                              >
+                                <option value="TRANSFERENCIA">Transferencia Bancaria</option>
+                              </select>
+                              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                            2. Número de Operación (* Obligatorio)
+                          </label>
+                          <div className="relative rounded-xl shadow-soft-sm">
+                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                              <Hash className="w-4 h-4 text-slate-400" />
+                            </div>
+                            <input
+                              type="text"
+                              required
+                              value={paymentOperation}
+                              onChange={(e) => setPaymentOperation(e.target.value)}
+                              className="w-full pl-9 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-soft"
+                              placeholder="Ej: 351-98765432"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                            3. Adjuntar Comprobante de Pago (* Obligatorio)
+                          </label>
+                          <div className="relative rounded-xl border border-dashed border-slate-300 p-3 bg-slate-50/80 hover:bg-slate-100/80 transition-soft">
+                            <input
+                              type="file"
+                              required={!paymentFile}
+                              accept="image/*,.pdf"
+                              onChange={(e) => setPaymentFile(e.target.files?.[0] || null)}
+                              className="w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border border-slate-200 file:text-xs file:font-bold file:bg-white file:text-slate-700 hover:file:bg-slate-100 cursor-pointer"
+                            />
+                            {paymentFile && (
+                              <p className="text-[11px] text-emerald-600 font-bold mt-1.5 flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> {paymentFile.name}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex gap-3 pt-2 border-t border-slate-100">
+                          {totalPaid <= 0.01 && request.statusRaw === 'COTIZADA' && (
+                            <button
+                              type="button"
+                              onClick={() => setIsQuotationAccepted(false)}
+                              disabled={submittingPayment}
+                              className="flex-1 py-3.5 bg-white hover:bg-slate-50 text-slate-600 font-bold text-xs rounded-xl transition-soft cursor-pointer border border-slate-200 hover:border-slate-300 disabled:opacity-50 flex items-center justify-center space-x-1.5 shadow-2xs"
+                            >
+                              <span>Volver</span>
+                            </button>
+                          )}
+                          <button
+                            type="submit"
+                            disabled={submittingPayment || !paymentAmount || !paymentOperation.trim() || !paymentFile || (totalPaid <= 0.01 && Number(paymentAmount) < (request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0) * 0.30 - 0.01)}
+                            className="flex-[2] py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition-soft cursor-pointer disabled:opacity-50 flex justify-center items-center space-x-2 shadow-soft border border-emerald-700 hover-lift"
                           >
-                            <option value="TRANSFERENCIA">Transferencia Bancaria</option>
-                          </select>
-                          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
-                            <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                          </div>
+                            {submittingPayment ? (
+                              <>
+                                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                <span>Registrando...</span>
+                              </>
+                            ) : (
+                              <>
+                                <span>{totalPaid > 0.01 ? 'Registrar Abono Restante' : 'Registrar y Notificar Pago'}</span>
+                                <ArrowRight className="w-4 h-4" />
+                              </>
+                            )}
+                          </button>
                         </div>
-                      </div>
+                      </form>
                     </div>
-                    <div className="space-y-1.5">
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">Número de Operación (Opcional si adjunta foto)</label>
-                      <div className="relative rounded-xl shadow-soft-sm">
-                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                          <Hash className="w-4 h-4 text-slate-400" />
-                        </div>
-                        <input
-                          type="text"
-                          value={paymentOperation}
-                          onChange={(e) => setPaymentOperation(e.target.value)}
-                          className="w-full pl-9 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-soft"
-                          placeholder="Ej: 351-98765432"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">Adjuntar Comprobante (Cloudinary)</label>
-                      <div className="relative rounded-xl border border-dashed border-slate-300 p-3 bg-slate-50 hover:bg-slate-100 transition-soft">
-                        <input
-                          type="file"
-                          accept="image/*,.pdf"
-                          onChange={(e) => setPaymentFile(e.target.files?.[0] || null)}
-                          className="w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
-                        />
-                        {paymentFile && (
-                          <p className="text-[11px] text-emerald-600 font-semibold mt-1">
-                            ✓ {paymentFile.name}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3 pt-3">
-                      <button
-                        type="button"
-                        onClick={() => setIsQuotationAccepted(false)}
-                        disabled={submittingPayment}
-                        className="flex-1 py-3 bg-white hover:bg-slate-50 text-slate-500 font-bold text-xs rounded-xl transition-soft cursor-pointer border border-slate-200 disabled:opacity-50 flex items-center justify-center space-x-1.5 shadow-soft-sm"
-                      >
-                        <span>Volver</span>
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={submittingPayment}
-                        className="flex-[2] py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-soft cursor-pointer disabled:opacity-50 flex justify-center items-center space-x-1.5 shadow-soft border border-indigo-700 hover-lift"
-                      >
-                        {submittingPayment ? (
-                          <>
-                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            <span>Registrando...</span>
-                          </>
-                        ) : (
-                          <>
-                            <span>Registrar Pago de Adelanto</span>
-                            <ArrowRight className="w-4 h-4" />
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </form>
+                  </div>
                 </div>
               )}
             </div>
           )}
-
-           {/* EVIDENCIAS CON NOTAS (Degradación Progresiva) */}
-           {isEvidencesSupported && (evidencesError || (evidences && evidences.length > 0)) && (
-              <div className="bg-white border border-slate-200/60 rounded-3xl p-6 shadow-soft space-y-4">
-                <h3 className="font-display font-bold text-sm text-slate-800 flex items-center">
-                  <Camera className="w-4.5 h-4.5 text-slate-400 mr-2" /> Evidencias Adjuntas y Observaciones del Técnico
-                </h3>
-                {evidencesError ? (
-                  <div className="bg-amber-50 text-amber-700 p-4 rounded-xl border border-amber-100 flex items-center text-xs">
-                    <AlertTriangle className="w-4 h-4 mr-2 shrink-0" />
-                    <p>{evidencesError}</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                    {evidences.map((ev, idx) => (
-                      <div key={ev.id_evidencia || idx} className="rounded-2xl overflow-hidden border border-slate-200/80 bg-white shadow-soft-sm flex flex-col">
-                        <div className="h-36 bg-slate-100 relative">
-                          {ev.tipo_archivo?.startsWith('image') || ev.url_archivo?.match(/\.(jpg|jpeg|png|webp|gif)$/i) || !ev.tipo_archivo ? (
-                            <img 
-                              src={ev.url_archivo} 
-                              alt={ev.observaciones || ev.descripcion || 'Evidencia'} 
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
-                              <Camera className="w-6 h-6 mb-2" />
-                              <span className="text-[10px] uppercase font-bold">{ev.tipo_archivo || 'Archivo'}</span>
-                            </div>
-                          )}
-                          {ev.tipo_evidencia && (
-                            <span className="absolute top-2 left-2 bg-slate-900/80 backdrop-blur-sm text-white text-[9px] font-bold px-2.5 py-1 rounded-full uppercase">
-                              {ev.tipo_evidencia.replace('_', ' ')}
-                            </span>
-                          )}
-                        </div>
-                        {(ev.observaciones || ev.descripcion) && (
-                          <div className="p-3 bg-slate-50 border-t border-slate-100 flex-1">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Observación del técnico</span>
-                            <p className="text-xs text-slate-700 italic mt-0.5">
-                              "{ev.observaciones || ev.descripcion}"
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-           )}
 
            {/* TIMELINE DE CAMBIOS DE ESTADO */}
            {request.timeline && request.timeline.length > 0 && (
@@ -1019,8 +1318,18 @@ const RequestTracking = () => {
            )}
         </div>
 
-        {/* Columna Lateral (Técnico y ETA) */}
-        <div className="space-y-6">
+        {/* COLUMNA LATERAL (4 Columnas): Estado Financiero, Técnico Asignado, Evidencias, Ayuda */}
+        <div className="lg:col-span-4 space-y-6 lg:space-y-8">
+          {/* 1. Estado Financiero */}
+          {!isCancelled && (
+            <FinancialStatusCard
+              request={request}
+              totalAmount={totalAmount}
+              totalPaid={totalPaid}
+              remainingBalance={remainingBalance}
+              payments={payments}
+            />
+          )}
           {request.technician ? (
             <div className="bg-white border border-slate-200/60 rounded-3xl p-5 shadow-soft space-y-4">
               <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-400">Especialista Asignado</h3>
@@ -1076,6 +1385,55 @@ const RequestTracking = () => {
               </div>
             </div>
           )}
+
+           {/* EVIDENCIAS CON NOTAS (Degradación Progresiva) */}
+           {isEvidencesSupported && (evidencesError || (evidences && evidences.length > 0)) && (
+              <div className="bg-white border border-slate-200/60 rounded-3xl p-6 shadow-soft space-y-4">
+                <h3 className="font-display font-bold text-sm text-slate-800 flex items-center">
+                  <Camera className="w-4.5 h-4.5 text-slate-400 mr-2" /> Evidencias Adjuntas y Observaciones del Técnico
+                </h3>
+                {evidencesError ? (
+                  <div className="bg-amber-50 text-amber-700 p-4 rounded-xl border border-amber-100 flex items-center text-xs">
+                    <AlertTriangle className="w-4 h-4 mr-2 shrink-0" />
+                    <p>{evidencesError}</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {evidences.map((ev, idx) => (
+                      <div key={ev.id_evidencia || idx} className="rounded-2xl overflow-hidden border border-slate-200/80 bg-white shadow-soft-sm flex flex-col">
+                        <div className="h-32 bg-slate-100 relative">
+                          {ev.tipo_archivo?.startsWith('image') || ev.url_archivo?.match(/\.(jpg|jpeg|png|webp|gif)$/i) || !ev.tipo_archivo ? (
+                            <img 
+                              src={ev.url_archivo} 
+                              alt={ev.observaciones || ev.descripcion || 'Evidencia'} 
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
+                              <Camera className="w-6 h-6 mb-2" />
+                              <span className="text-[10px] uppercase font-bold">{ev.tipo_archivo || 'Archivo'}</span>
+                            </div>
+                          )}
+                          {ev.tipo_evidencia && (
+                            <span className="absolute top-2 left-2 bg-slate-900/80 backdrop-blur-sm text-white text-[9px] font-bold px-2.5 py-1 rounded-full uppercase">
+                              {ev.tipo_evidencia.replace('_', ' ')}
+                            </span>
+                          )}
+                        </div>
+                        {(ev.observaciones || ev.descripcion) && (
+                          <div className="p-3 bg-slate-50 border-t border-slate-100 flex-1">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Observación del técnico</span>
+                            <p className="text-xs text-slate-700 italic mt-0.5">
+                              "{ev.observaciones || ev.descripcion}"
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+           )}
 
           <div className="p-5 bg-slate-50 border border-slate-200/60 rounded-3xl space-y-2 text-xs">
             <span className="font-bold text-slate-700 text-xs">Ayuda de SIGESTO</span>

@@ -206,302 +206,348 @@ const Dashboard = () => {
     : 0;
 
   return (
-    <div className="space-y-6 text-left font-sans animate-fade-in">
+    <div className="text-left font-sans animate-fade-in">
       
-      {/* Cabecera de bienvenida */}
-      <div className="bg-gradient-to-r from-indigo-600 to-indigo-500 rounded-3xl p-6 md:p-8 text-white shadow-soft-lg relative overflow-hidden">
-        <div className="absolute right-0 bottom-0 opacity-10 translate-x-10 translate-y-10">
-          <Wrench className="w-72 h-72" />
-        </div>
-        <div className="relative z-10 space-y-2 flex flex-col sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <span className="text-indigo-100 text-xs font-semibold uppercase tracking-wider">{getFormattedDate()}</span>
-            <h1 className="font-display font-extrabold text-2xl md:text-3xl leading-tight">
-              Hola, {user?.name}
-            </h1>
-            <p className="text-indigo-100 text-xs md:text-sm max-w-lg font-normal mt-1">
-              Bienvenido a tu panel de SIGESTO. Aquí puedes ver el estado detallado de tus servicios o crear nuevas solicitudes.
-            </p>
-          </div>
-          <div className="mt-4 sm:mt-0 shrink-0">
-            <Link 
-              to="/wizard" 
-              className="inline-flex items-center justify-center px-6 py-3 bg-white text-indigo-600 hover:bg-slate-50 text-sm font-bold rounded-xl shadow-soft transition-soft hover-lift"
-            >
-              Nueva Solicitud <PlusCircle className="w-4.5 h-4.5 ml-2" />
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      {/* Tarjetas de Métricas Rápidas */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 animate-slide-up" style={{ animationDelay: '0.1s' }}>
-        <div className="bg-white/80 backdrop-blur-md border border-slate-200/60 p-5 rounded-2xl shadow-soft flex items-center justify-between hover-lift">
-          <div className="space-y-1">
-            <span className="text-slate-400 text-xs font-semibold">Servicios Activos</span>
-            <p className="text-2xl font-bold text-slate-800">{activeCount}</p>
-          </div>
-          <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
-            <Activity className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white/80 backdrop-blur-md border border-slate-200/60 p-5 rounded-2xl shadow-soft flex items-center justify-between hover-lift">
-          <div className="space-y-1">
-            <span className="text-slate-400 text-xs font-semibold">Cotizaciones Pendientes</span>
-            <p className="text-2xl font-bold text-slate-800">{pendingPaymentCount}</p>
-          </div>
-          <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
-            <CreditCard className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white/80 backdrop-blur-md border border-slate-200/60 p-5 rounded-2xl shadow-soft flex items-center justify-between hover-lift">
-          <div className="space-y-1">
-            <span className="text-slate-400 text-xs font-semibold">Servicios Completados</span>
-            <p className="text-2xl font-bold text-slate-800">{completedCount}</p>
-          </div>
-          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
-            <CheckCircle2 className="w-5 h-5" />
-          </div>
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="bg-white border border-slate-200/60 rounded-2xl p-10 text-center shadow-soft">
-          <div className="inline-block w-8 h-8 border-4 border-slate-200 border-t-indigo-500 rounded-full animate-spin"></div>
-          <p className="text-slate-400 text-xs mt-3">Cargando historial operativo...</p>
-        </div>
-      ) : dashboardError ? (
-        <div className="bg-white border border-rose-200/60 rounded-3xl p-12 text-center shadow-soft space-y-4">
-          <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto border border-rose-100">
-            <AlertTriangle className="w-7 h-7" />
-          </div>
-          <div className="space-y-1 max-w-sm mx-auto">
-            <h4 className="font-bold text-slate-800 text-sm">Problema de conexión</h4>
-            <p className="text-xs text-slate-400">{dashboardError}</p>
-          </div>
-          <button
-            onClick={fetchRequests}
-            className="inline-flex items-center justify-center px-5 py-2.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-soft transition-soft hover-lift cursor-pointer"
-          >
-            Reintentar Conexión
-          </button>
-        </div>
-      ) : requests.length === 0 ? (
-        <div className="bg-white/80 backdrop-blur-md border border-slate-200/60 rounded-3xl p-12 text-center shadow-soft space-y-4">
-          <div className="w-16 h-16 bg-slate-50 text-slate-400 rounded-full flex items-center justify-center mx-auto border border-slate-100">
-            <Wrench className="w-7 h-7" />
-          </div>
-          <div className="space-y-1 max-w-sm mx-auto">
-            <h4 className="font-bold text-slate-800 text-sm">No tienes solicitudes registradas</h4>
-            <p className="text-xs text-slate-400">Crea tu primera solicitud para recibir asistencia técnica en tu domicilio.</p>
-          </div>
-          <Link
-            to="/wizard"
-            className="inline-flex items-center justify-center px-5 py-2.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-soft transition-soft hover-lift"
-          >
-            Crear Mi Primera Solicitud <PlusCircle className="w-4 h-4 ml-1.5" />
-          </Link>
-        </div>
-      ) : (
-        <div className="space-y-6 animate-slide-up" style={{ animationDelay: '0.2s' }}>
+      {/* MASTER 12-COLUMN DASHBOARD GRID */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+        
+        {/* COLUMNA PRINCIPAL (8 COLUMNAS): Cabecera de Bienvenida + Servicio Destacado + Historial */}
+        <div className="lg:col-span-8 space-y-6 lg:space-y-8">
           
-          {/* FEATURED REQUEST - DETALLE COMPLETO EN DASHBOARD */}
-          <div className="bg-white/90 backdrop-blur-lg border border-slate-200/60 rounded-3xl p-6 md:p-8 shadow-soft">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          {/* 1. Cabecera de bienvenida */}
+          <div className="bg-gradient-to-r from-indigo-600 to-indigo-500 rounded-3xl p-6 md:p-8 text-white shadow-soft-lg relative overflow-hidden">
+            <div className="absolute right-0 bottom-0 opacity-10 translate-x-10 translate-y-10">
+              <Wrench className="w-72 h-72" />
+            </div>
+            <div className="relative z-10 space-y-2 flex flex-col sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="font-display font-bold text-lg text-slate-900 flex items-center">
-                  Servicio Activo
-                </h3>
-                <p className="text-xs text-slate-400 mt-1">{featuredRequest.type}</p>
+                <span className="text-indigo-100 text-xs font-semibold uppercase tracking-wider">{getFormattedDate()}</span>
+                <h1 className="font-display font-extrabold text-2xl md:text-3xl leading-tight">
+                  Hola, {user?.name}
+                </h1>
+                <p className="text-indigo-100 text-xs md:text-sm max-w-lg font-normal mt-1">
+                  Bienvenido a tu panel de SIGESTO. Aquí puedes ver el estado detallado de tus servicios o crear nuevas solicitudes.
+                </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {featuredRequest.isEmergency && (
-                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-600 border border-rose-100">
-                    <AlertTriangle className="w-3.5 h-3.5 mr-1" /> URGENTE
-                  </span>
-                )}
-                {getStatusBadge(featuredRequest.status)}
-                {getFinancialBadge(featuredRequest)}
-                {featuredRequest.status === 'Pendiente' && (
-                  <button
-                    onClick={() => handleCancelRequest(featuredRequest.id)}
-                    disabled={cancelLoadingId === featuredRequest.id}
-                    className="px-3 py-1.5 text-xs font-semibold text-red-500 hover:bg-red-50 border border-red-100 rounded-lg transition-soft cursor-pointer disabled:opacity-50 flex items-center"
-                  >
-                    <XCircle className="w-3.5 h-3.5 mr-1" />
-                    {cancelLoadingId === featuredRequest.id ? 'Cancelando...' : 'Anular'}
-                  </button>
-                )}
+              <div className="mt-4 sm:mt-0 shrink-0">
+                <Link 
+                  to="/wizard" 
+                  className="inline-flex items-center justify-center px-6 py-3 bg-white text-indigo-600 hover:bg-slate-50 text-sm font-bold rounded-xl shadow-soft transition-soft hover-lift"
+                >
+                  Nueva Solicitud <PlusCircle className="w-4.5 h-4.5 ml-2" />
+                </Link>
               </div>
             </div>
+          </div>
 
-            {/* Stepper del servicio destacado (Flujo Operativo de 5 Etapas) */}
-            {currentStageIndex === -1 ? (
-              <div className="bg-rose-50 border border-rose-100 rounded-2xl p-6 flex items-start space-x-3 text-rose-800">
-                <XCircle className="w-6 h-6 text-rose-500 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-bold text-sm">Esta solicitud ha sido Anulada</h4>
-                  <p className="text-xs text-rose-600 mt-1 leading-normal">
-                    La solicitud fue cancelada por el cliente. Los registros quedan archivados en su historial operativo.
-                  </p>
-                </div>
+          {/* 2. Contenido Operativo */}
+          {loading ? (
+            <div className="bg-white border border-slate-200/60 rounded-3xl p-10 text-center shadow-soft">
+              <div className="inline-block w-8 h-8 border-4 border-slate-200 border-t-indigo-500 rounded-full animate-spin"></div>
+              <p className="text-slate-400 text-xs mt-3">Cargando historial operativo...</p>
+            </div>
+          ) : dashboardError ? (
+            <div className="bg-white border border-rose-200/60 rounded-3xl p-12 text-center shadow-soft space-y-4">
+              <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto border border-rose-100">
+                <AlertTriangle className="w-7 h-7" />
               </div>
-            ) : (
-              <div className="flex flex-col md:flex-row md:justify-between items-start md:items-center gap-6 relative py-4">
-                {OPERATIONAL_STAGES.map((stage, idx) => {
-                  const isCompleted = idx < currentStageIndex;
-                  const isActive = idx === currentStageIndex;
-
-                  return (
-                    <div key={idx} className="flex md:flex-col items-center flex-1 w-full relative">
-                      {idx < OPERATIONAL_STAGES.length - 1 && (
-                        <div className="hidden md:block absolute left-[50%] top-4 w-[100%] h-0.5 bg-slate-100">
-                          <div
-                            className="bg-indigo-500 h-full transition-all duration-500"
-                            style={{ width: isCompleted ? '100%' : isActive ? '50%' : '0%' }}
-                          ></div>
-                        </div>
-                      )}
-                      <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 z-10 transition-soft ${
-                          isActive
-                            ? 'bg-indigo-600 text-white shadow-soft ring-4 ring-indigo-500/20'
-                            : isCompleted
-                            ? 'bg-emerald-500 text-white'
-                            : 'bg-slate-100 text-slate-400 border border-slate-200'
-                        }`}
+              <div className="space-y-1 max-w-sm mx-auto">
+                <h4 className="font-bold text-slate-800 text-sm">Problema de conexión</h4>
+                <p className="text-xs text-slate-400">{dashboardError}</p>
+              </div>
+              <button
+                onClick={fetchRequests}
+                className="inline-flex items-center justify-center px-5 py-2.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-soft transition-soft hover-lift cursor-pointer"
+              >
+                Reintentar Conexión
+              </button>
+            </div>
+          ) : requests.length === 0 ? (
+            <div className="bg-white/80 backdrop-blur-md border border-slate-200/60 rounded-3xl p-12 text-center shadow-soft space-y-4">
+              <div className="w-16 h-16 bg-slate-50 text-slate-400 rounded-full flex items-center justify-center mx-auto border border-slate-100">
+                <Wrench className="w-7 h-7" />
+              </div>
+              <div className="space-y-1 max-w-sm mx-auto">
+                <h4 className="font-bold text-slate-800 text-sm">No tienes solicitudes registradas</h4>
+                <p className="text-xs text-slate-400">Crea tu primera solicitud para recibir asistencia técnica en tu domicilio.</p>
+              </div>
+              <Link
+                to="/wizard"
+                className="inline-flex items-center justify-center px-5 py-2.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-soft transition-soft hover-lift"
+              >
+                Crear Mi Primera Solicitud <PlusCircle className="w-4 h-4 ml-1.5" />
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-6 lg:space-y-8 animate-slide-up" style={{ animationDelay: '0.2s' }}>
+              
+              {/* FEATURED REQUEST - DETALLE COMPLETO EN DASHBOARD */}
+              <div className="bg-white/90 backdrop-blur-lg border border-slate-200/60 rounded-3xl p-6 md:p-8 shadow-soft">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                  <div>
+                    <h3 className="font-display font-bold text-lg text-slate-900 flex items-center">
+                      Servicio Activo
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">{featuredRequest.type}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {featuredRequest.isEmergency && (
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-600 border border-rose-100">
+                        <AlertTriangle className="w-3.5 h-3.5 mr-1" /> URGENTE
+                      </span>
+                    )}
+                    {getStatusBadge(featuredRequest.status)}
+                    {getFinancialBadge(featuredRequest)}
+                    {featuredRequest.status === 'Pendiente' && (
+                      <button
+                        onClick={() => handleCancelRequest(featuredRequest.id)}
+                        disabled={cancelLoadingId === featuredRequest.id}
+                        className="px-3 py-1.5 text-xs font-semibold text-red-500 hover:bg-red-50 border border-red-100 rounded-lg transition-soft cursor-pointer disabled:opacity-50 flex items-center"
                       >
-                        {isCompleted ? <CheckCircle2 className="w-4.5 h-4.5" /> : idx + 1}
-                      </div>
-                      <div className="ml-4 md:ml-0 md:text-center mt-0 md:mt-3 text-left">
-                        <h4
-                          className={`text-xs font-bold ${
-                            isActive ? 'text-indigo-600' : isCompleted ? 'text-slate-800' : 'text-slate-400'
-                          }`}
-                        >
-                          {stage.label}
-                        </h4>
-                        <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{stage.desc}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Detalles Rápidos del Servicio Activo */}
-            <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-slate-100">
-              <div className="space-y-3">
-                <h4 className="font-bold text-xs uppercase tracking-wider text-slate-400">Descripción del Problema</h4>
-                <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs text-slate-600 leading-relaxed">
-                  {featuredRequest.description}
+                        <XCircle className="w-3.5 h-3.5 mr-1" />
+                        {cancelLoadingId === featuredRequest.id ? 'Cancelando...' : 'Anular'}
+                      </button>
+                    )}
+                  </div>
                 </div>
-                {featuredRequest.materiales_cliente && (
-                  <div className="bg-blue-50/60 border border-blue-100 p-3 rounded-xl text-[11px] text-blue-900 mt-2">
-                    <span className="font-bold text-blue-700 block text-[10px] uppercase">Materiales del cliente</span>
-                    {featuredRequest.materiales_cliente}
+
+                {/* Stepper del servicio destacado (Flujo Operativo de 5 Etapas) */}
+                {currentStageIndex === -1 ? (
+                  <div className="bg-rose-50 border border-rose-100 rounded-2xl p-6 flex items-start space-x-3 text-rose-800">
+                    <XCircle className="w-6 h-6 text-rose-500 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-bold text-sm">Esta solicitud ha sido Anulada</h4>
+                      <p className="text-xs text-rose-600 mt-1 leading-normal">
+                        La solicitud fue cancelada por el cliente. Los registros quedan archivados en su historial operativo.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col sm:flex-row sm:justify-between items-start sm:items-center gap-4 relative py-4">
+                    {OPERATIONAL_STAGES.map((stage, idx) => {
+                      const isCompleted = idx < currentStageIndex;
+                      const isActive = idx === currentStageIndex;
+
+                      return (
+                        <div key={idx} className="flex sm:flex-col items-center flex-1 w-full relative">
+                          {idx < OPERATIONAL_STAGES.length - 1 && (
+                            <div className="hidden sm:block absolute left-[50%] top-4 w-[100%] h-0.5 bg-slate-100">
+                              <div
+                                className="bg-indigo-500 h-full transition-all duration-500"
+                                style={{ width: isCompleted ? '100%' : isActive ? '50%' : '0%' }}
+                              ></div>
+                            </div>
+                          )}
+                          <div
+                            className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 z-10 transition-soft ${
+                              isActive
+                                ? 'bg-indigo-600 text-white shadow-soft ring-4 ring-indigo-500/20'
+                                : isCompleted
+                                ? 'bg-emerald-500 text-white'
+                                : 'bg-slate-100 text-slate-400 border border-slate-200'
+                            }`}
+                          >
+                            {isCompleted ? <CheckCircle2 className="w-4.5 h-4.5" /> : idx + 1}
+                          </div>
+                          <div className="ml-3 sm:ml-0 sm:text-center mt-0 sm:mt-3 text-left">
+                            <h4
+                              className={`text-xs font-bold ${
+                                isActive ? 'text-indigo-600' : isCompleted ? 'text-slate-800' : 'text-slate-400'
+                              }`}
+                            >
+                              {stage.label}
+                            </h4>
+                            <p className="text-[10px] text-slate-400 mt-0.5 leading-tight hidden sm:block">{stage.desc}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
-                <div className="flex items-center text-xs text-slate-500 pt-2">
-                  <MapPin className="w-4 h-4 text-slate-400 mr-1.5 shrink-0" />
-                  <span className="truncate">{featuredRequest.location?.address}</span>
-                </div>
-              </div>
 
-              <div className="space-y-3">
-                <h4 className="font-bold text-xs uppercase tracking-wider text-slate-400">Cotización Asignada</h4>
-                <div className="bg-white border border-slate-200 p-4 rounded-2xl flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className={`p-2 rounded-xl ${featuredRequest.quotation ? 'bg-indigo-50 text-indigo-500' : 'bg-slate-50 text-slate-400'}`}>
-                      <FileText className="w-5 h-5" />
+                {/* Detalles Rápidos del Servicio Activo */}
+                <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-slate-100">
+                  <div className="space-y-3">
+                    <h4 className="font-bold text-xs uppercase tracking-wider text-slate-400">Descripción del Problema</h4>
+                    <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl text-xs text-slate-600 leading-relaxed">
+                      {featuredRequest.description}
                     </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-800">
-                        {featuredRequest.quotation ? 'Presupuesto Listo' : 'En Evaluación'}
-                      </p>
-                      <p className="text-[10px] text-slate-400">
-                        {featuredRequest.quotation ? `Estado: ${featuredRequest.quotation.status}` : 'El técnico está evaluando el trabajo'}
-                      </p>
+                    {featuredRequest.materiales_cliente && (
+                      <div className="bg-blue-50/60 border border-blue-100 p-3 rounded-xl text-[11px] text-blue-900 mt-2">
+                        <span className="font-bold text-blue-700 block text-[10px] uppercase">Materiales del cliente</span>
+                        {featuredRequest.materiales_cliente}
+                      </div>
+                    )}
+                    <div className="flex items-center text-xs text-slate-500 pt-2">
+                      <MapPin className="w-4 h-4 text-slate-400 mr-1.5 shrink-0" />
+                      <span className="truncate">{featuredRequest.location?.address}</span>
                     </div>
                   </div>
-                  {featuredRequest.quotation ? (
-                    <div className="flex items-center space-x-3">
-                      <div className="text-right">
-                        <p className="text-[10px] text-slate-400 font-semibold mb-0.5">Monto Total</p>
-                        <p className="text-sm font-display font-extrabold text-slate-900 tracking-tight">S/ {featuredRequest.quotation.total}</p>
+
+                  <div className="space-y-3">
+                    <h4 className="font-bold text-xs uppercase tracking-wider text-slate-400">Cotización Asignada</h4>
+                    <div className="bg-white border border-slate-200 p-4 rounded-2xl flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className={`p-2 rounded-xl ${featuredRequest.quotation ? 'bg-indigo-50 text-indigo-500' : 'bg-slate-50 text-slate-400'}`}>
+                          <FileText className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-800">
+                            {featuredRequest.quotation ? 'Presupuesto Listo' : 'En Evaluación'}
+                          </p>
+                          <p className="text-[10px] text-slate-400">
+                            {featuredRequest.quotation ? `Estado: ${featuredRequest.quotation.status}` : 'El técnico está evaluando el trabajo'}
+                          </p>
+                        </div>
                       </div>
-                      <Link
-                        to={`/tracking/${featuredRequest.id}`}
-                        className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-xl shadow-soft transition-soft flex items-center shrink-0"
-                      >
-                        Ver Detalle <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                      </Link>
+                      {featuredRequest.quotation ? (
+                        <div className="flex items-center space-x-3">
+                          <div className="text-right">
+                            <p className="text-[10px] text-slate-400 font-semibold mb-0.5">Monto Total</p>
+                            <p className="text-sm font-display font-extrabold text-slate-900 tracking-tight">S/ {featuredRequest.quotation.total}</p>
+                          </div>
+                          <Link
+                            to={`/tracking/${featuredRequest.id}`}
+                            className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-xl shadow-soft transition-soft flex items-center shrink-0"
+                          >
+                            Ver Detalle <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                          </Link>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] font-bold px-2 py-1 bg-slate-100 text-slate-500 rounded-lg">Pendiente</span>
+                      )}
                     </div>
-                  ) : (
-                    <span className="text-[10px] font-bold px-2 py-1 bg-slate-100 text-slate-500 rounded-lg">Pendiente</span>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* LISTA SECUNDARIA: HISTORIAL DE SOLICITUDES ANTERIORES */}
+              {historyRequests.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="font-display font-bold text-sm text-slate-500 uppercase tracking-wider pt-2">Historial Reciente</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {visibleHistory.map((request) => (
+                      <div 
+                        key={request.id}
+                        className="bg-white/80 backdrop-blur-md border border-slate-200/60 rounded-2xl p-5 shadow-soft hover:border-slate-300 transition-soft flex flex-col space-y-3"
+                      >
+                        <div className="flex items-center justify-end">
+                          <div className="flex items-center space-x-1.5">
+                            {request.isEmergency && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100">
+                                URGENTE
+                              </span>
+                            )}
+                            {getStatusBadge(request.status)}
+                          </div>
+                        </div>
+                        
+                        <div className="flex-1">
+                          <h4 className="font-bold text-slate-800 text-sm truncate">{request.type}</h4>
+                          <p className="text-xs text-slate-400 line-clamp-2 mt-1">{request.description}</p>
+                        </div>
+
+                        <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                          <span className="text-[10px] text-slate-400">{new Date(request.createdAt).toLocaleDateString('es-ES', { month: 'short', day: 'numeric' })}</span>
+                          <Link
+                            to={`/tracking/${request.id}`}
+                            className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center transition-soft"
+                          >
+                            Ver Ficha <ArrowRight className="w-3 h-3 ml-1" />
+                          </Link>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {historyRequests.length > 6 && (
+                    <div className="pt-2 text-center">
+                      <button
+                        onClick={() => setShowAllHistory(!showAllHistory)}
+                        className="inline-flex items-center justify-center px-6 py-2.5 bg-white hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-xl border border-slate-200 transition-soft cursor-pointer hover-lift shadow-sm"
+                      >
+                        {showAllHistory ? 'Ver Menos' : `Ver más (${historyRequests.length - 6} restantes)`}
+                      </button>
+                    </div>
                   )}
                 </div>
-              </div>
-            </div>
-
-          </div>
-
-          {/* LISTA SECUNDARIA: HISTORIAL DE SOLICITUDES ANTERIORES */}
-          {historyRequests.length > 0 && (
-            <div className="space-y-4">
-              <h3 className="font-display font-bold text-sm text-slate-500 uppercase tracking-wider pt-4">Historial Reciente</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {visibleHistory.map((request) => (
-                  <div 
-                    key={request.id}
-                    className="bg-white/80 backdrop-blur-md border border-slate-200/60 rounded-2xl p-5 shadow-soft hover:border-slate-300 transition-soft flex flex-col space-y-3"
-                  >
-                    <div className="flex items-center justify-end">
-                      <div className="flex items-center space-x-1.5">
-                        {request.isEmergency && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100">
-                            URGENTE
-                          </span>
-                        )}
-                        {getStatusBadge(request.status)}
-                      </div>
-                    </div>
-                    
-                    <div className="flex-1">
-                      <h4 className="font-bold text-slate-800 text-sm truncate">{request.type}</h4>
-                      <p className="text-xs text-slate-400 line-clamp-2 mt-1">{request.description}</p>
-                    </div>
-
-                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                      <span className="text-[10px] text-slate-400">{new Date(request.createdAt).toLocaleDateString('es-ES', { month: 'short', day: 'numeric' })}</span>
-                      <Link
-                        to={`/tracking/${request.id}`}
-                        className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center transition-soft"
-                      >
-                        Ver Ficha <ArrowRight className="w-3 h-3 ml-1" />
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              
-              {historyRequests.length > 6 && (
-                <div className="pt-2 text-center">
-                  <button
-                    onClick={() => setShowAllHistory(!showAllHistory)}
-                    className="inline-flex items-center justify-center px-6 py-2.5 bg-white hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-xl border border-slate-200 transition-soft cursor-pointer hover-lift shadow-sm"
-                  >
-                    {showAllHistory ? 'Ver Menos' : `Ver más (${historyRequests.length - 6} restantes)`}
-                  </button>
-                </div>
               )}
+
             </div>
           )}
 
         </div>
-      )}
+
+        {/* COLUMNA LATERAL (4 COLUMNAS): Métricas del Portal + Acceso Rápido y Soporte */}
+        <div className="lg:col-span-4 space-y-6 lg:space-y-8">
+          
+          {/* Panel de Métricas Rápidas (Apilado verticalmente en la columna lateral) */}
+          <div className="bg-white/90 backdrop-blur-lg border border-slate-200/60 rounded-3xl p-6 shadow-soft space-y-5 animate-slide-up" style={{ animationDelay: '0.1s' }}>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="font-display font-bold text-sm text-slate-800">Métricas Operativas</h3>
+                <p className="text-[11px] text-slate-400">Resumen general de tus servicios</p>
+              </div>
+              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100">
+                <Activity className="w-4.5 h-4.5" />
+              </div>
+            </div>
+
+            <div className="space-y-3.5">
+              <div className="p-4 bg-slate-50/80 hover:bg-slate-100/80 border border-slate-200/60 rounded-2xl transition-soft flex items-center justify-between">
+                <div className="flex items-center space-x-3.5">
+                  <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100/80">
+                    <Activity className="w-4.5 h-4.5" />
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Servicios Activos</span>
+                    <span className="text-lg font-display font-extrabold text-slate-800">{activeCount}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 bg-slate-50/80 hover:bg-slate-100/80 border border-slate-200/60 rounded-2xl transition-soft flex items-center justify-between">
+                <div className="flex items-center space-x-3.5">
+                  <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl border border-amber-100/80">
+                    <CreditCard className="w-4.5 h-4.5" />
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Cotizaciones Pendientes</span>
+                    <span className="text-lg font-display font-extrabold text-slate-800">{pendingPaymentCount}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 bg-slate-50/80 hover:bg-slate-100/80 border border-slate-200/60 rounded-2xl transition-soft flex items-center justify-between">
+                <div className="flex items-center space-x-3.5">
+                  <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100/80">
+                    <CheckCircle2 className="w-4.5 h-4.5" />
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Servicios Completados</span>
+                    <span className="text-lg font-display font-extrabold text-slate-800">{completedCount}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Tarjeta de Soporte y Ayuda Rápida */}
+          <div className="p-6 bg-slate-50 border border-slate-200/60 rounded-3xl space-y-3">
+            <h4 className="font-display font-bold text-xs uppercase tracking-wider text-slate-700">Asistencia Continua</h4>
+            <p className="text-slate-500 text-xs leading-relaxed">
+              ¿Deseas reprogramar tu visita técnica o consultar por un nuevo servicio especializado? Nuestro equipo de atención al cliente está a tu disposición.
+            </p>
+            <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs">
+              <span className="text-slate-400 font-medium">Soporte Directo:</span>
+              <span className="font-mono font-extrabold text-indigo-600">☎ 01 445-5656</span>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
 
     </div>
   );
