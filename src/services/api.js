@@ -321,22 +321,42 @@ export const api = {
     },
     create: async (requestData) => {
       const currentUser = getStorageItem('sigesto_current_user', {});
+      const explicitlyDisabledMap = requestData.includeMapInfo === false || requestData.enviar_mapa === false;
+
+      const rawLat = requestData.latitud !== undefined ? requestData.latitud : (requestData.lat !== undefined ? requestData.lat : requestData.coordinates?.lat);
+      const rawLng = requestData.longitud !== undefined ? requestData.longitud : (requestData.lng !== undefined ? requestData.lng : requestData.coordinates?.lng);
+
+      const lat = !explicitlyDisabledMap && rawLat != null && rawLat !== '' ? Number(rawLat) : null;
+      const lng = !explicitlyDisabledMap && rawLng != null && rawLng !== '' ? Number(rawLng) : null;
+
       const payload = {
-        id_cliente: currentUser.id_cliente || currentUser.id || 1, // Fallback dinámico
-        descripcion_problema: requestData.description,
-        direccion_servicio: requestData.address,
-        fecha_preferida: requestData.scheduledDate || null,
-        hora_preferida: requestData.scheduledTime || null,
-        notas_disponibilidad: requestData.notasDisponibilidad || (requestData.isEmergency ? 'URGENTE - Emergencia Reportada' : 'Preferente'),
+        id_cliente: requestData.id_cliente || currentUser.id_cliente || currentUser.id || 1, // Fallback dinámico
+        descripcion_problema: requestData.descripcion_problema || requestData.description,
+        direccion_servicio: requestData.direccion_servicio || requestData.address,
+        direccion: requestData.direccion || requestData.direccion_servicio || requestData.address,
+        fecha_preferida: requestData.fecha_preferida || requestData.scheduledDate || null,
+        hora_preferida: requestData.hora_preferida || requestData.scheduledTime || null,
+        notas_disponibilidad: requestData.notas_disponibilidad || requestData.notasDisponibilidad || (requestData.isEmergency ? 'URGENTE - Emergencia Reportada' : 'Preferente'),
         materiales_cliente: requestData.materiales_cliente || null,
-        es_urgente: Boolean(requestData.isEmergency || requestData.es_urgente),
-        // Mantenemos campos adicionales por si la API los soporta opcionalmente
-        foto_base64: requestData.photo,
-        latitud: requestData.coordinates?.lat,
-        longitud: requestData.coordinates?.lng,
-        es_emergencia: Boolean(requestData.isEmergency || requestData.es_urgente),
-        tipo_servicio: requestData.type
+        es_urgente: Boolean(requestData.es_urgente ?? requestData.isEmergency),
+        enviar_mapa: !explicitlyDisabledMap && lat !== null && lng !== null,
+        latitud: lat,
+        longitud: lng,
+        lat: lat,
+        lng: lng,
+        latitude: lat,
+        longitude: lng,
+        foto_base64: requestData.foto_base64 || requestData.photo,
+        es_emergencia: Boolean(requestData.es_emergencia ?? requestData.es_urgente ?? requestData.isEmergency),
+        tipo_servicio: requestData.tipo_servicio || requestData.type || 'Avería Eléctrica'
       };
+
+      console.log('📍 [DEBUG GEOLOCALIZACIÓN] Payload enviado a POST /api/solicitudes:', {
+        latitud: payload.latitud,
+        longitud: payload.longitud,
+        enviar_mapa: payload.enviar_mapa,
+        direccion_servicio: payload.direccion_servicio
+      });
 
       const response = await fetch(`${API_BASE_URL}/solicitudes`, {
         method: 'POST',

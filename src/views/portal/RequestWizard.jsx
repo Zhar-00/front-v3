@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
@@ -15,10 +15,23 @@ let DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-const LocationPicker = ({ coordinates, setCoordinates }) => {
+const MapController = ({ center }) => {
+  const map = useMap();
+  React.useEffect(() => {
+    if (center && typeof center.lat === 'number' && typeof center.lng === 'number' && !isNaN(center.lat) && !isNaN(center.lng)) {
+      map.setView([center.lat, center.lng], map.getZoom());
+    }
+  }, [center?.lat, center?.lng, map]);
+  return null;
+};
+
+const LocationPicker = ({ coordinates, setCoordinates, onLocationSelect }) => {
   useMapEvents({
     click(e) {
-      setCoordinates({ lat: e.latlng.lat, lng: e.latlng.lng });
+      const lat = e.latlng.lat;
+      const lng = e.latlng.lng;
+      setCoordinates({ lat, lng });
+      if (onLocationSelect) onLocationSelect(lat, lng);
     },
   });
   return coordinates ? <Marker position={[coordinates.lat, coordinates.lng]} /> : null;
@@ -38,6 +51,7 @@ import {
   CheckCircle2, 
   AlertTriangle,
   Locate,
+  Search,
   Image as ImageIcon
 } from 'lucide-react';
 
@@ -73,13 +87,45 @@ const RequestWizard = () => {
     setNotasDisponibilidad(prev => prev ? `${prev}, ${note}` : note);
   };
 
+  const fetchAddressFromCoords = async (lat, lng) => {
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
+      const data = await res.json();
+      if (data && data.display_name) {
+        setAddress(data.display_name);
+      } else {
+        setAddress(`Coordenadas: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+      }
+    } catch (err) {
+      console.error("Error geocodificando coordenadas:", err);
+      setAddress(`Coordenadas: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+    }
+  };
+
+  const fetchCoordsFromAddress = async (query) => {
+    if (!query || !query.trim() || query.startsWith('Coordenadas:')) return;
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
+      const data = await res.json();
+      if (data && data.length > 0 && data[0].lat && data[0].lon) {
+        const lat = parseFloat(data[0].lat);
+        const lng = parseFloat(data[0].lon);
+        setCoordinates({ lat, lng });
+      }
+    } catch (err) {
+      console.error("Error buscando dirección en mapa:", err);
+    }
+  };
+
   // Geolocalización usando API nativa
   const handleGetLocation = () => {
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          setCoordinates({ lat: position.coords.latitude, lng: position.coords.longitude });
-          setAddress(`Coordenadas: ${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)}`);
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          setCoordinates({ lat, lng });
+          fetchAddressFromCoords(lat, lng);
         },
         (error) => {
           console.error("Error obteniendo ubicación:", error);
@@ -117,13 +163,20 @@ const RequestWizard = () => {
   const handleSubmit = async () => {
     setIsSubmitting(true);
     try {
+      const finalAddress = address || `Coordenadas: ${coordinates.lat.toFixed(5)}, ${coordinates.lng.toFixed(5)}`;
       const result = await api.requests.create({
         type: INCIDENT_TYPES.find(i => i.id === incidentType)?.label || 'Avería Eléctrica',
         description,
         notasDisponibilidad,
         materiales_cliente: materialesCliente,
-        address,
+        address: finalAddress,
+        direccion: finalAddress,
+        direccion_servicio: finalAddress,
         coordinates,
+        latitud: coordinates?.lat,
+        longitud: coordinates?.lng,
+        lat: coordinates?.lat,
+        lng: coordinates?.lng,
         isEmergency,
         es_urgente: isEmergency,
         scheduledDate,
@@ -287,10 +340,31 @@ const RequestWizard = () => {
                       required
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
+                      onBlur={() => {
+                        if (address && address.trim().length > 4 && !address.startsWith('Coordenadas:')) {
+                          fetchCoordsFromAddress(address);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (address && address.trim().length > 3) fetchCoordsFromAddress(address);
+                        }
+                      }}
                       placeholder="Dirección, Distrito y Referencia"
                       className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:border-indigo-500 focus:bg-white transition-soft"
                     />
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (address && address.trim().length > 3) fetchCoordsFromAddress(address);
+                    }}
+                    className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl transition-soft cursor-pointer flex items-center justify-center shrink-0 shadow-soft-sm"
+                    title="Buscar dirección en el mapa"
+                  >
+                    <Search className="w-5 h-5 text-slate-600" />
+                  </button>
                   <button
                     type="button"
                     onClick={handleGetLocation}
@@ -319,12 +393,13 @@ const RequestWizard = () => {
                       attribution='&copy; OpenStreetMap'
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
-                    <LocationPicker coordinates={coordinates} setCoordinates={setCoordinates} />
+                    <MapController center={coordinates} />
+                    <LocationPicker coordinates={coordinates} setCoordinates={setCoordinates} onLocationSelect={fetchAddressFromCoords} />
                   </MapContainer>
                   
                   {/* Floating map hint label */}
                   <div className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm border border-slate-100 rounded-lg px-2.5 py-1 text-[9px] font-semibold text-slate-600 shadow-soft z-[1000] pointer-events-none">
-                    Haz click en cualquier punto para mover el Pin
+                    Haz click en cualquier punto para mover el Pin y actualizar la dirección
                   </div>
                 </div>
               </div>
