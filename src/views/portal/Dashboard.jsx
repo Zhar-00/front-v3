@@ -197,8 +197,21 @@ const Dashboard = () => {
     );
   };
 
-  const featuredRequest = requests.length > 0 ? requests[0] : null;
-  const historyRequests = requests.length > 1 ? requests.slice(1) : [];
+  const sortedRequests = React.useMemo(() => {
+    return [...requests].sort((a, b) => {
+      const timeA = new Date(a.createdAt || 0).getTime();
+      const timeB = new Date(b.createdAt || 0).getTime();
+      if (timeB !== timeA && !isNaN(timeB) && !isNaN(timeA)) {
+        return timeB - timeA;
+      }
+      const idA = typeof a.id === 'number' ? a.id : (a.idNumeric || 0);
+      const idB = typeof b.id === 'number' ? b.id : (b.idNumeric || 0);
+      return idB - idA;
+    });
+  }, [requests]);
+
+  const featuredRequest = sortedRequests.length > 0 ? sortedRequests[0] : null;
+  const historyRequests = sortedRequests.length > 1 ? sortedRequests.slice(1) : [];
   const visibleHistory = showAllHistory ? historyRequests : historyRequests.slice(0, 6);
 
   const currentStageIndex = featuredRequest
@@ -422,58 +435,6 @@ const Dashboard = () => {
 
               </div>
 
-              {/* LISTA SECUNDARIA: HISTORIAL DE SOLICITUDES ANTERIORES */}
-              {historyRequests.length > 0 && (
-                <div className="space-y-4">
-                  <h3 className="font-display font-bold text-sm text-slate-500 uppercase tracking-wider pt-2">Historial Reciente</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {visibleHistory.map((request) => (
-                      <div 
-                        key={request.id}
-                        className="bg-white/80 backdrop-blur-md border border-slate-200/60 rounded-2xl p-5 shadow-soft hover:border-slate-300 transition-soft flex flex-col space-y-3"
-                      >
-                        <div className="flex items-center justify-end">
-                          <div className="flex items-center space-x-1.5">
-                            {request.isEmergency && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100">
-                                URGENTE
-                              </span>
-                            )}
-                            {getStatusBadge(request.status)}
-                          </div>
-                        </div>
-                        
-                        <div className="flex-1">
-                          <h4 className="font-bold text-slate-800 text-sm truncate">{request.type}</h4>
-                          <p className="text-xs text-slate-400 line-clamp-2 mt-1">{request.description}</p>
-                        </div>
-
-                        <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                          <span className="text-[10px] text-slate-400">{new Date(request.createdAt).toLocaleDateString('es-ES', { month: 'short', day: 'numeric' })}</span>
-                          <Link
-                            to={`/tracking/${request.id}`}
-                            className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center transition-soft"
-                          >
-                            Ver Ficha <ArrowRight className="w-3 h-3 ml-1" />
-                          </Link>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  
-                  {historyRequests.length > 6 && (
-                    <div className="pt-2 text-center">
-                      <button
-                        onClick={() => setShowAllHistory(!showAllHistory)}
-                        className="inline-flex items-center justify-center px-6 py-2.5 bg-white hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-xl border border-slate-200 transition-soft cursor-pointer hover-lift shadow-sm"
-                      >
-                        {showAllHistory ? 'Ver Menos' : `Ver más (${historyRequests.length - 6} restantes)`}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-
             </div>
           )}
 
@@ -548,6 +509,83 @@ const Dashboard = () => {
         </div>
 
       </div>
+
+      {/* HISTORIAL RECIENTE - PANTALLA COMPLETA (100% ANCHO, 3 COLUMNAS) */}
+      {!loading && !dashboardError && requests.length > 0 && historyRequests.length > 0 && (
+        <div className="mt-8 lg:mt-10 space-y-4 animate-slide-up" style={{ animationDelay: '0.3s' }}>
+          <div className="flex items-center justify-between border-b border-slate-200/60 pb-3">
+            <div>
+              <h3 className="font-display font-bold text-sm text-slate-500 uppercase tracking-wider">Historial Reciente</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Todas tus solicitudes operativas y su estado en tiempo real</p>
+            </div>
+            <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold">
+              Total: {historyRequests.length}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+            {visibleHistory.map((request) => (
+              <div 
+                key={request.id}
+                className="bg-white/80 backdrop-blur-md border border-slate-200/60 rounded-2xl p-5 shadow-soft hover:border-slate-300 transition-soft flex flex-col justify-between space-y-3"
+              >
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      {new Date(request.createdAt).toLocaleDateString('es-ES', { month: 'short', day: 'numeric' })}
+                    </span>
+                    {request.isEmergency && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100">
+                        URGENTE
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Estado de Flujo Operativo y Estado Financiero */}
+                  <div className="flex flex-col gap-1.5 pt-0.5">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">Flujo Operativo</span>
+                      <div className="shrink-0">{getStatusBadge(request.status)}</div>
+                    </div>
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">Estado Financiero</span>
+                      <div className="shrink-0">{getFinancialBadge(request)}</div>
+                    </div>
+                  </div>
+
+                  <div className="pt-1.5 border-t border-slate-100/80">
+                    <h4 className="font-bold text-slate-800 text-sm truncate">{request.type}</h4>
+                    <p className="text-xs text-slate-400 line-clamp-2 mt-1">{request.description}</p>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between mt-auto">
+                  <span className="text-[10px] font-mono text-slate-400 truncate max-w-[80px]">
+                    #{typeof request.id === 'string' && request.id.length > 8 ? request.id.slice(0, 6) : request.id}
+                  </span>
+                  <Link
+                    to={`/tracking/${request.id}`}
+                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center transition-soft shrink-0"
+                  >
+                    Ver Ficha <ArrowRight className="w-3 h-3 ml-1" />
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {historyRequests.length > 6 && (
+            <div className="pt-2 text-center">
+              <button
+                onClick={() => setShowAllHistory(!showAllHistory)}
+                className="inline-flex items-center justify-center px-6 py-2.5 bg-white hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-xl border border-slate-200 transition-soft cursor-pointer hover-lift shadow-sm"
+              >
+                {showAllHistory ? 'Ver Menos' : `Ver más (${historyRequests.length - 6} restantes)`}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
   );

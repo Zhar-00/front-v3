@@ -69,6 +69,7 @@ const RequestWizard = () => {
   const [materialesCliente, setMaterialesCliente] = useState('');
   const [address, setAddress] = useState(user?.address || '');
   const [coordinates, setCoordinates] = useState({ lat: -12.1221, lng: -77.0305 }); // Ubicación Lima por defecto
+  const [includeMapInfo, setIncludeMapInfo] = useState(false); // Marcador opcional para enviar información del mapa (desactivado por defecto)
   const [isEmergency, setIsEmergency] = useState(false);
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('10:00');
@@ -111,6 +112,7 @@ const RequestWizard = () => {
         const lat = parseFloat(data[0].lat);
         const lng = parseFloat(data[0].lon);
         setCoordinates({ lat, lng });
+        setIncludeMapInfo(true);
       }
     } catch (err) {
       console.error("Error buscando dirección en mapa:", err);
@@ -125,6 +127,7 @@ const RequestWizard = () => {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
           setCoordinates({ lat, lng });
+          setIncludeMapInfo(true);
           fetchAddressFromCoords(lat, lng);
         },
         (error) => {
@@ -141,6 +144,10 @@ const RequestWizard = () => {
   const handleNext = () => {
     if (step === 1 && !incidentType) {
       alert('Por favor seleccione un tipo de incidencia.');
+      return;
+    }
+    if (step === 2 && (!description || description.trim().length < 10)) {
+      alert('Por favor ingrese una descripción detallada de al menos 10 caracteres.');
       return;
     }
     if (step === 3 && !address.trim()) {
@@ -161,6 +168,10 @@ const RequestWizard = () => {
   };
 
   const handleSubmit = async () => {
+    if (!description || description.trim().length < 10) {
+      alert('La descripción debe tener al menos 10 caracteres.');
+      return;
+    }
     setIsSubmitting(true);
     try {
       const finalAddress = address || `Coordenadas: ${coordinates.lat.toFixed(5)}, ${coordinates.lng.toFixed(5)}`;
@@ -173,10 +184,11 @@ const RequestWizard = () => {
         direccion: finalAddress,
         direccion_servicio: finalAddress,
         coordinates,
-        latitud: coordinates?.lat,
-        longitud: coordinates?.lng,
-        lat: coordinates?.lat,
-        lng: coordinates?.lng,
+        includeMapInfo,
+        latitud: includeMapInfo ? coordinates.lat : null,
+        longitud: includeMapInfo ? coordinates.lng : null,
+        lat: includeMapInfo ? coordinates.lat : null,
+        lng: includeMapInfo ? coordinates.lng : null,
         isEmergency,
         es_urgente: isEmergency,
         scheduledDate,
@@ -276,11 +288,27 @@ const RequestWizard = () => {
                 <div className="relative">
                   <textarea
                     rows={4}
+                    required
+                    minLength={10}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Describa los síntomas (Ej. Las luces del pasadizo parpadean, la llave del enchufe general no se sostiene al levantarla, hay olor a quemado cerca al tablero general...)"
-                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:border-indigo-500 focus:bg-white transition-soft resize-none"
+                    className={`w-full p-4 bg-slate-50 border rounded-2xl text-sm focus:outline-none focus:bg-white transition-soft resize-none ${
+                      description && description.trim().length > 0 && description.trim().length < 10
+                        ? 'border-rose-300 focus:border-rose-500 bg-rose-50/10'
+                        : 'border-slate-200 focus:border-indigo-500'
+                    }`}
                   />
+                  <div className="flex justify-between items-center px-1 pt-1 text-[11px]">
+                    <span className={description && description.trim().length > 0 && description.trim().length < 10 ? 'text-rose-500 font-medium' : 'text-slate-400'}>
+                      {description && description.trim().length > 0 && description.trim().length < 10 
+                        ? `Mínimo 10 caracteres (faltan ${10 - description.trim().length})`
+                        : 'Debe ingresar al menos 10 caracteres detallando el problema.'}
+                    </span>
+                    <span className={`font-mono ${!description || description.trim().length < 10 ? 'text-slate-400' : 'text-emerald-600 font-semibold'}`}>
+                      {(description || '').trim().length} / 10+
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -376,33 +404,86 @@ const RequestWizard = () => {
                 </div>
               </div>
 
-              {/* MAP SIMULATOR */}
-              <div className="space-y-1">
+              {/* MARCADOR OPCIONAL DE MAPA */}
+              <div className={`p-4 rounded-2xl border transition-soft ${
+                includeMapInfo 
+                  ? 'bg-indigo-50/40 border-indigo-200/80 shadow-soft-sm' 
+                  : 'bg-slate-50 border-slate-200/70'
+              }`}>
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-slate-600">Mapa de geolocalización</label>
-                  <span className="text-[10px] text-slate-400 font-mono">Coords: {coordinates.lat.toFixed(5)}, {coordinates.lng.toFixed(5)}</span>
-                </div>
-
-                <div className="w-full h-48 bg-slate-100 border border-slate-200 rounded-2xl overflow-hidden relative shadow-inner z-0">
-                  <MapContainer 
-                    center={[coordinates.lat, coordinates.lng]} 
-                    zoom={15} 
-                    style={{ height: '100%', width: '100%' }}
-                  >
-                    <TileLayer
-                      attribution='&copy; OpenStreetMap'
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    />
-                    <MapController center={coordinates} />
-                    <LocationPicker coordinates={coordinates} setCoordinates={setCoordinates} onLocationSelect={fetchAddressFromCoords} />
-                  </MapContainer>
-                  
-                  {/* Floating map hint label */}
-                  <div className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm border border-slate-100 rounded-lg px-2.5 py-1 text-[9px] font-semibold text-slate-600 shadow-soft z-[1000] pointer-events-none">
-                    Haz click en cualquier punto para mover el Pin y actualizar la dirección
+                  <div className="flex items-start space-x-3 text-left">
+                    <MapPin className={`w-5 h-5 shrink-0 mt-0.5 ${includeMapInfo ? 'text-indigo-600' : 'text-slate-400'}`} />
+                    <div>
+                      <h4 className="font-bold text-slate-800 text-sm">¿Adjuntar ubicación en el mapa? (Opcional)</h4>
+                      <p className="text-xs text-slate-500 mt-0.5 leading-normal">
+                        Envíe la latitud y longitud exactas del mapa junto con la dirección en caso se encuentre en el lugar del servicio o desee precisarlo.
+                      </p>
+                    </div>
                   </div>
+                  
+                  {/* Checkbox Switch / Marcador */}
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
+                    <input
+                      type="checkbox"
+                      checked={includeMapInfo}
+                      onChange={(e) => setIncludeMapInfo(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                  </label>
                 </div>
               </div>
+
+              {/* MAP SIMULATOR OPCIONAL */}
+              {includeMapInfo ? (
+                <div className="space-y-1.5 animate-slide-up">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-600 flex items-center space-x-1.5">
+                      <span>Mapa de geolocalización</span>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        Se enviará latitud y longitud
+                      </span>
+                    </label>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      Lat: {coordinates.lat.toFixed(5)}, Lng: {coordinates.lng.toFixed(5)}
+                    </span>
+                  </div>
+
+                  <div className="w-full h-48 bg-slate-100 border border-slate-200 rounded-2xl overflow-hidden relative shadow-inner z-0">
+                    <MapContainer 
+                      center={[coordinates.lat, coordinates.lng]} 
+                      zoom={15} 
+                      style={{ height: '100%', width: '100%' }}
+                    >
+                      <TileLayer
+                        attribution='&copy; OpenStreetMap'
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      />
+                      <MapController center={coordinates} />
+                      <LocationPicker coordinates={coordinates} setCoordinates={setCoordinates} onLocationSelect={fetchAddressFromCoords} />
+                    </MapContainer>
+                    
+                    {/* Floating map hint label */}
+                    <div className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm border border-slate-100 rounded-lg px-2.5 py-1 text-[9px] font-semibold text-slate-600 shadow-soft z-[1000] pointer-events-none">
+                      Haz click en cualquier punto para mover el Pin y actualizar la dirección
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 bg-slate-50/80 border border-slate-200/60 rounded-2xl text-center space-y-1.5">
+                  <p className="text-xs font-semibold text-slate-600">Envío de coordenadas desactivado</p>
+                  <p className="text-[11px] text-slate-400">
+                    La solicitud se enviará solo con la dirección en texto (ideal si no se encuentra en el lugar donde se requiere el servicio).
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setIncludeMapInfo(true)}
+                    className="mt-1 inline-flex items-center px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-lg transition-soft cursor-pointer border border-indigo-200/60"
+                  >
+                    Activar mapa y adjuntar coordenadas
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}

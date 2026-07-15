@@ -248,12 +248,13 @@ export const api = {
         if (arrays.length > 0) items = arrays[0];
       }
 
-      return items.map(s => {
+      const mapped = items.map(s => {
         let mappedStatus = s.estado ? s.estado.charAt(0).toUpperCase() + s.estado.slice(1).toLowerCase() : 'Pendiente';
         if (mappedStatus === 'En_proceso') mappedStatus = 'En ejecución';
 
         return {
           id: s.uuid_solicitud || s.id_solicitud || s.id,
+          idNumeric: typeof s.id_solicitud === 'number' ? s.id_solicitud : (typeof s.id === 'number' ? s.id : 0),
           status: mappedStatus,
           statusRaw: s.estado,
           type: s.tipo_servicio || s.tipo || 'Avería Eléctrica',
@@ -275,6 +276,18 @@ export const api = {
             total: parseFloat(s.cotizacion.total || s.cotizacion.monto_total || 0),
           } : null
         };
+      });
+
+      return mapped.sort((a, b) => {
+        const timeA = new Date(a.createdAt || 0).getTime();
+        const timeB = new Date(b.createdAt || 0).getTime();
+        if (timeB !== timeA && !isNaN(timeB) && !isNaN(timeA)) {
+          return timeB - timeA;
+        }
+        if (b.idNumeric && a.idNumeric && b.idNumeric !== a.idNumeric) {
+          return b.idNumeric - a.idNumeric;
+        }
+        return 0;
       });
     },
     getById: async (id) => {
