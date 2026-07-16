@@ -17,7 +17,9 @@ import {
   FileText,
   DollarSign,
   Hash,
-  ArrowRight
+  ArrowRight,
+  Trophy,
+  Sparkles
 } from 'lucide-react';
 
 const OPERATIONAL_STAGES = [
@@ -40,17 +42,41 @@ const getOperationalStageIndex = (rawStatus) => {
 };
 
 // Componente B: Estado Financiero (Desvinculado del Flujo Operativo)
-const FinancialStatusCard = ({ request, totalAmount, totalPaid, remainingBalance, payments = [] }) => {
+const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, remainingBalance: propRemainingBalance, payments = [] }) => {
+  let allPayments = Array.isArray(payments) ? [...payments] : [];
+  try {
+    const localPending = JSON.parse(localStorage.getItem(`sigesto_pending_payments_${request?.id}`) || localStorage.getItem(`sigesto_pending_payments_${request?.idNumeric}`) || '[]');
+    if (Array.isArray(localPending) && localPending.length > 0) {
+      const existingIds = new Set(allPayments.map(p => String(p.id_pago || p.id)));
+      const unverified = localPending.filter(lp => !existingIds.has(String(lp.id_pago || lp.id)));
+      allPayments = [...unverified, ...allPayments];
+    }
+  } catch (e) {}
+
+  const totalPaidFromPayments = allPayments
+    .filter(p => p.estado !== 'RECHAZADO' && p.estado !== 'CANCELADO' && (p.estado || '').toString().toUpperCase() !== 'RECHAZADO' && (p.estado || '').toString().toUpperCase() !== 'CANCELADO')
+    .reduce((sum, p) => sum + parseFloat(p.monto_pagado || p.monto || 0), 0);
+  const totalPaid = Math.max(propTotalPaid || 0, totalPaidFromPayments, parseFloat(request?.total_pagado || request?.monto_pagado || request?.totalPagado || 0));
+  const remainingBalance = Math.max(0, totalAmount - totalPaid);
+
   const getFinancialStatusInfo = () => {
-    const estadoPago = (request?.estado_pago || '').toString().toUpperCase();
-    const tipoPago = (request?.tipo_pago || '').toString().toUpperCase();
+    const estadoPago = (request?.estado_pago || request?.estadoPago || request?.quotation?.estado_pago || '').toString().toUpperCase();
+    const tipoPago = (request?.tipo_pago || request?.tipoPago || request?.quotation?.tipo_pago || '').toString().toUpperCase();
     const rawStatus = (request?.statusRaw || request?.status || '').toString().toUpperCase();
+    const quotationStatus = (request?.quotation?.status || request?.quotation?.estado || '').toString().toUpperCase();
 
     // 1. Pagado / Liquidado (Verde Esmeralda)
     const isFullyPaid =
       (estadoPago === 'COMPLETADO' && (tipoPago === 'FINAL' || tipoPago === 'TOTAL')) ||
       estadoPago === 'PAGADO' ||
       estadoPago === 'LIQUIDADO' ||
+      quotationStatus === 'PAGADO' ||
+      quotationStatus === 'LIQUIDADO' ||
+      quotationStatus === 'PAGADA' ||
+      rawStatus === 'FINALIZADA' ||
+      rawStatus === 'FINALIZADO' ||
+      rawStatus === 'COMPLETADA' ||
+      rawStatus === 'TERMINADA' ||
       (totalAmount > 0 && remainingBalance <= 0.01 && totalPaid >= totalAmount - 0.01);
 
     if (isFullyPaid) {
@@ -66,8 +92,11 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid, remainingBalance
     }
 
     // 2. Pago o Adelanto en Revisión (Azul Cielo / Sky)
-    const hasPendingValidation = payments.some(p => ['PENDIENTE', 'EN_REVISION', 'REVISION', 'PENDIENTE_VALIDACION', 'VERIFICANDO', 'PENDIENTE DE VALIDACION', 'EN REVISION'].includes((p.estado || '').toString().toUpperCase())) ||
-      (totalPaid > 0 && !['COMPLETADO', 'VERIFICADO', 'APROBADO', 'PAGADO', 'LIQUIDADO'].includes(estadoPago) && rawStatus === 'COTIZADA');
+    const hasPendingValidation = allPayments.some(p => ['PENDIENTE', 'EN_REVISION', 'REVISION', 'PENDIENTE_VALIDACION', 'VERIFICANDO', 'PENDIENTE DE VALIDACION', 'EN REVISION'].includes((p.estado || '').toString().toUpperCase())) ||
+      estadoPago === 'EN_REVISION' ||
+      estadoPago === 'REVISION' ||
+      estadoPago === 'PENDIENTE_VALIDACION' ||
+      (totalPaid > 0 && !['COMPLETADO', 'VERIFICADO', 'APROBADO', 'PAGADO', 'LIQUIDADO'].includes(estadoPago) && (rawStatus === 'COTIZADA' || rawStatus === 'REVISION_PAGO'));
 
     if (hasPendingValidation) {
       return {
@@ -85,7 +114,11 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid, remainingBalance
     const isAdvanceConfirmed =
       estadoPago === 'ADELANTO' ||
       tipoPago === 'ADELANTO' ||
+      quotationStatus === 'ADELANTO' ||
       rawStatus === 'APROBADA' ||
+      rawStatus === 'EN_PROCESO' ||
+      rawStatus === 'EN CURSO' ||
+      rawStatus === 'PROCESO' ||
       (totalPaid > 0 && remainingBalance > 0.01);
 
     if (isAdvanceConfirmed) {
@@ -100,7 +133,25 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid, remainingBalance
       };
     }
 
-    // 4. Pendiente de pago (Gris Neutro)
+    // 4. Por cotizar (Gris Suave)
+    const isPreQuotation =
+      totalAmount <= 0.01 ||
+      ['PENDIENTE', 'ASIGNADA', 'ASIGNADO', 'EN_CAMINO', 'CAMINO'].includes(rawStatus) ||
+      quotationStatus === 'BORRADOR';
+
+    if (isPreQuotation && totalPaid <= 0.01) {
+      return {
+        key: 'POR_COTIZAR',
+        label: 'Por cotizar',
+        badgeClass: 'bg-slate-100 text-slate-500 border-slate-200',
+        dotClass: 'bg-slate-400',
+        cardBorder: 'border-slate-200/70',
+        iconBg: 'bg-slate-100 text-slate-500 border-slate-200',
+        description: 'Cotización sujeta a evaluación técnica previa en la visita del especialista.'
+      };
+    }
+
+    // 5. Pendiente de pago (Gris Neutro)
     return {
       key: 'PENDIENTE_PAGO',
       label: 'Pendiente de pago',
@@ -108,9 +159,7 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid, remainingBalance
       dotClass: 'bg-slate-400',
       cardBorder: 'border-slate-200/70',
       iconBg: 'bg-slate-100 text-slate-600 border-slate-200',
-      description: totalAmount > 0
-        ? 'En espera de confirmación de pago para proceder con el servicio.'
-        : 'Cotización sujeta a evaluación técnica previa al cobro.'
+      description: 'En espera de confirmación de pago para proceder con el servicio o abono.'
     };
   };
 
@@ -352,7 +401,14 @@ const OperationalStepper = ({ request, currentOperationalIndex }) => {
           </div>
         </div>
         <div className="flex items-center">
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border ${
+            currentOperationalIndex === OPERATIONAL_STAGES.length - 1
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+          }`}>
+            {currentOperationalIndex === OPERATIONAL_STAGES.length - 1 && (
+              <CheckCircle2 className="w-3.5 h-3.5 mr-1.5 text-emerald-600 inline" />
+            )}
             Etapa {currentOperationalIndex + 1} de {OPERATIONAL_STAGES.length}: {OPERATIONAL_STAGES[currentOperationalIndex]?.label || 'Pendiente'}
           </span>
         </div>
@@ -360,16 +416,17 @@ const OperationalStepper = ({ request, currentOperationalIndex }) => {
 
       <div className="flex flex-col md:flex-row md:justify-between items-start md:items-center gap-6 relative my-auto">
         {OPERATIONAL_STAGES.map((stage, idx) => {
-          const isCompleted = idx < currentOperationalIndex;
-          const isActive = idx === currentOperationalIndex;
+          const isFinalStage = currentOperationalIndex === OPERATIONAL_STAGES.length - 1;
+          const isCompleted = idx < currentOperationalIndex || (isFinalStage && idx === OPERATIONAL_STAGES.length - 1);
+          const isActive = idx === currentOperationalIndex && !isFinalStage;
 
           return (
             <div key={idx} className="flex md:flex-col items-center flex-1 w-full relative">
               {idx < OPERATIONAL_STAGES.length - 1 && (
                 <div className="hidden md:block absolute left-[50%] top-4 w-[100%] h-0.5 bg-slate-100">
                   <div
-                    className="bg-indigo-500 h-full transition-all duration-500"
-                    style={{ width: isCompleted ? '100%' : isActive ? '50%' : '0%' }}
+                    className={`${isCompleted || idx < currentOperationalIndex ? 'bg-emerald-500' : 'bg-indigo-500'} h-full transition-all duration-500`}
+                    style={{ width: isCompleted || idx < currentOperationalIndex ? '100%' : isActive ? '50%' : '0%' }}
                   ></div>
                 </div>
               )}
@@ -378,7 +435,7 @@ const OperationalStepper = ({ request, currentOperationalIndex }) => {
                   isActive
                     ? 'bg-indigo-600 text-white shadow-soft ring-4 ring-indigo-500/20'
                     : isCompleted
-                    ? 'bg-emerald-500 text-white'
+                    ? 'bg-emerald-500 text-white shadow-soft ring-4 ring-emerald-500/20'
                     : 'bg-slate-100 text-slate-400 border border-slate-200'
                 }`}
               >
@@ -634,15 +691,22 @@ const RequestTracking = () => {
     }
   }, [totalPaid, remainingBalance]);
 
-  const estadoPagoMain = (request?.estado_pago || '').toString().toUpperCase();
-  const tipoPagoMain = (request?.tipo_pago || '').toString().toUpperCase();
+  const estadoPagoMain = (request?.estado_pago || request?.estadoPago || request?.quotation?.estado_pago || '').toString().toUpperCase();
+  const tipoPagoMain = (request?.tipo_pago || request?.tipoPago || request?.quotation?.tipo_pago || '').toString().toUpperCase();
   const rawStatusMain = (request?.statusRaw || request?.status || '').toString().toUpperCase();
+  const quotationStatusMain = (request?.quotation?.status || request?.quotation?.estado || '').toString().toUpperCase();
 
   const isFullyPaid =
     (estadoPagoMain === 'COMPLETADO' && (tipoPagoMain === 'FINAL' || tipoPagoMain === 'TOTAL')) ||
     estadoPagoMain === 'PAGADO' ||
     estadoPagoMain === 'LIQUIDADO' ||
+    quotationStatusMain === 'PAGADO' ||
+    quotationStatusMain === 'LIQUIDADO' ||
+    quotationStatusMain === 'PAGADA' ||
     rawStatusMain === 'FINALIZADA' ||
+    rawStatusMain === 'FINALIZADO' ||
+    rawStatusMain === 'COMPLETADA' ||
+    rawStatusMain === 'TERMINADA' ||
     (totalAmount > 0 && remainingBalance <= 0.01 && totalPaid >= totalAmount - 0.01);
 
   if (loading) {
@@ -794,6 +858,47 @@ const RequestTracking = () => {
         </div>
       )}
 
+      {/* BANNER DE AGRADECIMIENTO Y FINALIZACIÓN TOTAL */}
+      {currentOperationalIndex === 4 && isFullyPaid && !isCancelled && (
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 p-6 md:p-8 text-white shadow-xl mb-8 border border-emerald-400/30 animate-slide-up group">
+          {/* Efectos de fondo flotantes y destellos */}
+          <div className="absolute -top-12 -right-12 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none group-hover:scale-125 transition-transform duration-700"></div>
+          <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-emerald-300/10 rounded-full blur-2xl pointer-events-none group-hover:scale-125 transition-transform duration-700"></div>
+          
+          <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-6">
+            <div className="flex items-center space-x-4 md:space-x-5 text-center sm:text-left">
+              <div className="p-4 bg-white/15 backdrop-blur-md rounded-2xl border border-white/20 shadow-lg shrink-0 flex items-center justify-center animate-bounce">
+                <Trophy className="w-8 h-8 text-amber-300 drop-shadow-md" />
+              </div>
+              <div>
+                <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-widest uppercase bg-white/20 backdrop-blur-sm text-emerald-100 border border-white/20">
+                    <Sparkles className="w-3 h-3 mr-1 text-amber-300 animate-pulse inline" />
+                    Servicio y Liquidación 100% Concluidos
+                  </span>
+                </div>
+                <h2 className="font-display font-black text-lg md:text-2xl tracking-tight text-white drop-shadow-sm">
+                  ¡Gracias por su preferencia y confianza!
+                </h2>
+                <p className="text-xs md:text-sm text-emerald-100 mt-1 max-w-2xl font-medium leading-relaxed">
+                  Hemos finalizado exitosamente el trabajo técnico y se ha completado la liquidación total de pago. Ha sido un placer atenderle. ¡Esperamos volver a servirle pronto!
+                </p>
+              </div>
+            </div>
+            
+            <div className="shrink-0 flex items-center gap-3">
+              <div className="flex items-center gap-2 bg-white/15 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/25 shadow-inner">
+                <CheckCircle2 className="w-5 h-5 text-emerald-300 shrink-0" />
+                <div className="text-left">
+                  <span className="block text-[9px] font-bold text-emerald-200 uppercase tracking-wider">Estado Total</span>
+                  <span className="block text-xs font-extrabold text-white">Completado & Liquidado</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MASTER 12-COLUMN DASHBOARD LAYOUT: 8 Columnas Principal / 4 Columnas Lateral */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start animate-slide-up">
         
@@ -828,7 +933,7 @@ const RequestTracking = () => {
           </div>
 
           {/* COTIZACIÓN */}
-          {request.quotation && (
+          {request.quotation && (currentOperationalIndex >= 2 || (request.quotation.status !== 'BORRADOR' && totalAmount > 0.01)) && (
             <div className="bg-white border-2 border-slate-200/80 rounded-3xl p-6 md:p-8 shadow-soft space-y-6 relative overflow-hidden animate-slide-up">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
                 <div className="flex items-center space-x-3.5">
@@ -935,10 +1040,10 @@ const RequestTracking = () => {
                 </div>
               )}
 
-              {request.quotation && !isFullyPaid && (
+              {request.quotation && !isFullyPaid && totalAmount > 0.01 && (
                 (request.statusRaw === 'COTIZADA' && isQuotationAccepted) ||
                 totalPaid > 0.01 ||
-                ['APROBADA', 'REVISION_PAGO', 'EN_PROCESO', 'ASIGNADA', 'EN CURSO'].includes((request.statusRaw || request.status || '').toString().toUpperCase())
+                ['APROBADA', 'REVISION_PAGO', 'EN_PROCESO', 'EN CURSO'].includes((request.statusRaw || request.status || '').toString().toUpperCase())
               ) && (
                 <div className="pt-5 border-t border-slate-150 animate-slide-up space-y-5">
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100">

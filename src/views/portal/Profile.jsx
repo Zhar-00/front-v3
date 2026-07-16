@@ -113,13 +113,24 @@ const Profile = () => {
         return <span className="bg-amber-50 text-amber-600 text-[10px] font-semibold px-2 py-0.5 rounded border border-amber-100 uppercase">Pendiente</span>;
       case 'Asignado':
         return <span className="bg-indigo-50 text-indigo-600 text-[10px] font-semibold px-2 py-0.5 rounded border border-indigo-100 uppercase">Asignado</span>;
+      case 'Cotizado':
+      case 'Revision_pago':
+      case 'Revisión_pago':
+      case 'Revision pago':
+      case 'Aprobado':
+      case 'Aprobada':
+      case 'Adelanto':
+      case 'Pagado':
+        return <span className="bg-blue-50 text-blue-600 text-[10px] font-semibold px-2 py-0.5 rounded border border-blue-100 uppercase">Cotizado</span>;
       case 'En camino':
         return <span className="bg-sky-50 text-sky-600 text-[10px] font-semibold px-2 py-0.5 rounded border border-sky-100 uppercase animate-pulse">En camino</span>;
       case 'En ejecución':
+      case 'En curso':
         return <span className="bg-purple-50 text-purple-600 text-[10px] font-semibold px-2 py-0.5 rounded border border-purple-100 uppercase">En curso</span>;
       case 'Finalizado':
         return <span className="bg-emerald-50 text-emerald-600 text-[10px] font-semibold px-2 py-0.5 rounded border border-emerald-100 uppercase">Finalizado</span>;
       case 'Cancelado':
+      case 'Anulado':
         return <span className="bg-rose-50 text-rose-500 text-[10px] font-semibold px-2 py-0.5 rounded border border-rose-100 uppercase">Anulado</span>;
       default:
         return <span className="bg-slate-50 text-slate-500 text-[10px] font-semibold px-2 py-0.5 rounded border border-slate-100 uppercase">{status}</span>;

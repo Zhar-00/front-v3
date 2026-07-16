@@ -250,7 +250,20 @@ export const api = {
 
       const mapped = items.map(s => {
         let mappedStatus = s.estado ? s.estado.charAt(0).toUpperCase() + s.estado.slice(1).toLowerCase() : 'Pendiente';
-        if (mappedStatus === 'En_proceso') mappedStatus = 'En ejecución';
+        const upperStatus = (s.estado || '').toString().toUpperCase();
+        if (upperStatus === 'EN_PROCESO' || upperStatus === 'EN CURSO' || upperStatus === 'PROCESO' || upperStatus === 'EN_EJECUCION') {
+          mappedStatus = 'En ejecución';
+        } else if (upperStatus === 'COTIZADA' || upperStatus === 'APROBADA' || upperStatus === 'REVISION_PAGO' || upperStatus === 'REVISION PAGO' || upperStatus === 'PAGADO' || upperStatus === 'ADELANTO') {
+          mappedStatus = 'Cotizado';
+        } else if (upperStatus === 'ASIGNADA' || upperStatus === 'ASIGNADO') {
+          mappedStatus = 'Asignado';
+        } else if (upperStatus === 'FINALIZADA' || upperStatus === 'FINALIZADO' || upperStatus === 'COMPLETADA' || upperStatus === 'TERMINADA') {
+          mappedStatus = 'Finalizado';
+        } else if (upperStatus === 'CANCELADA' || upperStatus === 'CANCELADO' || upperStatus === 'ANULADA' || upperStatus === 'RECHAZADA') {
+          mappedStatus = 'Anulado';
+        } else if (upperStatus === 'PENDIENTE') {
+          mappedStatus = 'Pendiente';
+        }
 
         return {
           id: s.uuid_solicitud || s.id_solicitud || s.id,
@@ -274,7 +287,12 @@ export const api = {
             id: s.cotizacion.id_cotizacion,
             status: s.cotizacion.estado,
             total: parseFloat(s.cotizacion.total || s.cotizacion.monto_total || 0),
-          } : null
+          } : null,
+          estado_pago: s.estado_pago || s.estadoPago || s.estado_financiero || s.cotizacion?.estado_pago || '',
+          tipo_pago: s.tipo_pago || s.tipoPago || s.cotizacion?.tipo_pago || '',
+          payments: Array.isArray(s.pagos) ? s.pagos : (Array.isArray(s.payments) ? s.payments : (Array.isArray(s.cotizacion?.pagos) ? s.cotizacion.pagos : [])),
+          total_pagado: parseFloat(s.total_pagado || s.monto_pagado || s.totalPagado || s.cotizacion?.total_pagado || 0),
+          saldo_pendiente: parseFloat(s.saldo_pendiente || s.saldoPendiente || s.cotizacion?.saldo_pendiente || 0)
         };
       });
 
@@ -299,7 +317,20 @@ export const api = {
       const s = data.solicitud || (data.data && data.data.solicitud) || data.data || data;
 
       let mappedStatus = s.estado ? s.estado.charAt(0).toUpperCase() + s.estado.slice(1).toLowerCase() : 'Pendiente';
-      if (mappedStatus === 'En_proceso') mappedStatus = 'En ejecución';
+      const upperStatus = (s.estado || '').toString().toUpperCase();
+      if (upperStatus === 'EN_PROCESO' || upperStatus === 'EN CURSO' || upperStatus === 'PROCESO' || upperStatus === 'EN_EJECUCION') {
+        mappedStatus = 'En ejecución';
+      } else if (upperStatus === 'COTIZADA' || upperStatus === 'APROBADA' || upperStatus === 'REVISION_PAGO' || upperStatus === 'REVISION PAGO' || upperStatus === 'PAGADO' || upperStatus === 'ADELANTO') {
+        mappedStatus = 'Cotizado';
+      } else if (upperStatus === 'ASIGNADA' || upperStatus === 'ASIGNADO') {
+        mappedStatus = 'Asignado';
+      } else if (upperStatus === 'FINALIZADA' || upperStatus === 'FINALIZADO' || upperStatus === 'COMPLETADA' || upperStatus === 'TERMINADA') {
+        mappedStatus = 'Finalizado';
+      } else if (upperStatus === 'CANCELADA' || upperStatus === 'CANCELADO' || upperStatus === 'ANULADA' || upperStatus === 'RECHAZADA') {
+        mappedStatus = 'Anulado';
+      } else if (upperStatus === 'PENDIENTE') {
+        mappedStatus = 'Pendiente';
+      }
 
       return {
         id: s.uuid_solicitud || s.id_solicitud || s.id,
@@ -329,7 +360,12 @@ export const api = {
           igv: parseFloat(s.cotizacion.igv || 0),
           total: parseFloat(s.cotizacion.total || s.cotizacion.monto_total || 0),
           items: s.cotizacion.detalles || s.cotizacion.items || []
-        } : null
+        } : null,
+        estado_pago: s.estado_pago || s.estadoPago || s.estado_financiero || data.estado_pago || s.cotizacion?.estado_pago || '',
+        tipo_pago: s.tipo_pago || s.tipoPago || data.tipo_pago || s.cotizacion?.tipo_pago || '',
+        payments: Array.isArray(s.pagos) ? s.pagos : (Array.isArray(s.payments) ? s.payments : (Array.isArray(data.pagos) ? data.pagos : (Array.isArray(s.cotizacion?.pagos) ? s.cotizacion.pagos : []))),
+        total_pagado: parseFloat(s.total_pagado || s.monto_pagado || s.totalPagado || data.total_pagado || s.cotizacion?.total_pagado || 0),
+        saldo_pendiente: parseFloat(s.saldo_pendiente || s.saldoPendiente || data.saldo_pendiente || s.cotizacion?.saldo_pendiente || 0)
       };
     },
     create: async (requestData) => {
