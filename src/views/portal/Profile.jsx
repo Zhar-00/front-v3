@@ -107,7 +107,22 @@ const Profile = () => {
     ? requests 
     : requests.filter(r => r.status === statusFilter);
 
-  const getStatusBadge = (status) => {
+  const getStatusBadge = (status, reqObj = null) => {
+    if (reqObj) {
+      const ep = (reqObj.estado_pago || reqObj.estadoPago || reqObj.quotation?.estado_pago || '').toString().toUpperCase();
+      const qs = (reqObj.quotation?.status || reqObj.quotation?.estado || '').toString().toUpperCase();
+      const paid = parseFloat(reqObj.total_pagado || reqObj.monto_pagado || reqObj.totalPagado || 0);
+      if (
+        ['PAGADO', 'LIQUIDADO', 'COMPLETADO', 'ADELANTO', 'EN_REVISION', 'REVISION_PAGO', 'REVISION PAGO', 'PAGADA'].includes(ep) ||
+        ['PAGADO', 'LIQUIDADO', 'COMPLETADO', 'ADELANTO', 'EN_REVISION', 'REVISION_PAGO', 'REVISION PAGO', 'PAGADA'].includes(qs) ||
+        paid > 0.01
+      ) {
+        if (!['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'Finalizado', 'CANCELADA', 'CANCELADO', 'ANULADA', 'RECHAZADA', 'Anulado', 'Cancelado'].includes(status)) {
+          return <span className="bg-blue-50 text-blue-600 text-[10px] font-semibold px-2 py-0.5 rounded border border-blue-100 uppercase">Cotizado</span>;
+        }
+      }
+    }
+
     switch (status) {
       case 'Pendiente':
         return <span className="bg-amber-50 text-amber-600 text-[10px] font-semibold px-2 py-0.5 rounded border border-amber-100 uppercase">Pendiente</span>;
@@ -331,7 +346,7 @@ const Profile = () => {
                     
                     <div className="space-y-1 text-left min-w-0 flex-1">
                       <div className="flex items-center space-x-2">
-                        {getStatusBadge(req.status)}
+                        {getStatusBadge(req.status, req)}
                       </div>
                       <h4 className="font-bold text-slate-800 text-sm truncate">{req.type}</h4>
                       <div className="flex items-center text-[10px] text-slate-400 space-x-3.5">

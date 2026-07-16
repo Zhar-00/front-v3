@@ -30,13 +30,29 @@ const OPERATIONAL_STAGES = [
   { id: 'FINALIZADA', label: 'Finalizada', desc: 'Servicio concluido' }
 ];
 
-const getOperationalStageIndex = (rawStatus) => {
-  if (!rawStatus) return 0;
-  const s = rawStatus.toString().toUpperCase();
+const getOperationalStageIndex = (rawStatus, requestObj = null, isFinancialPaidOrAdvanced = false) => {
+  const s = (rawStatus || requestObj?.statusRaw || requestObj?.status || '').toString().toUpperCase();
   if (s === 'CANCELADA' || s === 'CANCELADO' || s === 'ANULADA' || s === 'RECHAZADA') return -1;
   if (s === 'FINALIZADA' || s === 'FINALIZADO' || s === 'COMPLETADA' || s === 'TERMINADA') return 4;
-  if (s === 'EN_PROCESO' || s === 'EN CURSO' || s === 'PROCESO') return 3;
-  if (s === 'COTIZADA' || s === 'APROBADA' || s === 'REVISION_PAGO') return 2;
+  if (s === 'EN_PROCESO' || s === 'EN CURSO' || s === 'PROCESO' || s === 'EN_EJECUCION') return 3;
+  if (s === 'COTIZADA' || s === 'APROBADA' || s === 'REVISION_PAGO' || s === 'REVISION PAGO' || s === 'PAGADO' || s === 'PAGADA' || s === 'LIQUIDADO' || s === 'ADELANTO') return 2;
+
+  // Si existe confirmación o revisión de pago/cotización en la parte financiera, la etapa mínima operativa es "Cotizada" (2)
+  if (isFinancialPaidOrAdvanced) return 2;
+  if (requestObj) {
+    const ep = (requestObj.estado_pago || requestObj.estadoPago || requestObj.quotation?.estado_pago || '').toString().toUpperCase();
+    const qs = (requestObj.quotation?.status || requestObj.quotation?.estado || '').toString().toUpperCase();
+    const totalAmount = parseFloat(requestObj.quotation?.total || requestObj.quotation?.monto_total || requestObj.monto_total || 0);
+    const totalPaid = parseFloat(requestObj.total_pagado || requestObj.monto_pagado || requestObj.totalPagado || 0);
+    if (
+      ['PAGADO', 'LIQUIDADO', 'COMPLETADO', 'ADELANTO', 'EN_REVISION', 'REVISION_PAGO', 'REVISION PAGO', 'PAGADA'].includes(ep) ||
+      ['PAGADO', 'LIQUIDADO', 'COMPLETADO', 'ADELANTO', 'EN_REVISION', 'REVISION_PAGO', 'REVISION PAGO', 'PAGADA'].includes(qs) ||
+      (totalAmount > 0 && totalPaid > 0.01)
+    ) {
+      return 2;
+    }
+  }
+
   if (s === 'ASIGNADA' || s === 'ASIGNADO') return 1;
   return 0;
 };
@@ -677,13 +693,17 @@ const RequestTracking = () => {
       (request.statusRaw || request.status || '').toString().toUpperCase()
     );
 
-  const currentOperationalIndex = request ? getOperationalStageIndex(request.statusRaw || request.status) : 0;
-
   const totalAmount = request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0;
   const totalPaid = payments
     .filter(p => p.estado !== 'RECHAZADO' && p.estado !== 'CANCELADO' && p.estado !== 'Rechazado' && p.estado !== 'Cancelado')
     .reduce((sum, p) => sum + parseFloat(p.monto_pagado || p.monto || 0), 0);
   const remainingBalance = Math.max(0, totalAmount - totalPaid);
+
+  const epMain = (request?.estado_pago || request?.estadoPago || request?.quotation?.estado_pago || '').toString().toUpperCase();
+  const qsMain = (request?.quotation?.status || request?.quotation?.estado || '').toString().toUpperCase();
+  const hasFinancialProgress = ['PAGADO', 'LIQUIDADO', 'COMPLETADO', 'ADELANTO', 'EN_REVISION', 'REVISION_PAGO', 'REVISION PAGO', 'PAGADA'].includes(epMain) || ['PAGADO', 'LIQUIDADO', 'COMPLETADO', 'ADELANTO', 'EN_REVISION', 'REVISION_PAGO', 'REVISION PAGO', 'PAGADA'].includes(qsMain) || (totalAmount > 0 && totalPaid > 0.01);
+
+  const currentOperationalIndex = request ? getOperationalStageIndex(request.statusRaw || request.status, request, hasFinancialProgress) : 0;
 
   useEffect(() => {
     if (totalPaid > 0.01 && remainingBalance > 0) {

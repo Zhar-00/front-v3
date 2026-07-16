@@ -25,13 +25,27 @@ const OPERATIONAL_STAGES = [
   { id: 'FINALIZADA', label: 'Finalizada', desc: 'Servicio concluido' }
 ];
 
-const getOperationalStageIndex = (rawStatus) => {
-  if (!rawStatus) return 0;
-  const s = rawStatus.toString().toUpperCase();
+const getOperationalStageIndex = (rawStatus, requestObj = null) => {
+  const s = (rawStatus || requestObj?.statusRaw || requestObj?.status || '').toString().toUpperCase();
   if (s === 'CANCELADA' || s === 'CANCELADO' || s === 'ANULADA' || s === 'RECHAZADA') return -1;
   if (s === 'FINALIZADA' || s === 'FINALIZADO' || s === 'COMPLETADA' || s === 'TERMINADA') return 4;
-  if (s === 'EN_PROCESO' || s === 'EN CURSO' || s === 'PROCESO') return 3;
-  if (s === 'COTIZADA' || s === 'APROBADA' || s === 'REVISION_PAGO') return 2;
+  if (s === 'EN_PROCESO' || s === 'EN CURSO' || s === 'PROCESO' || s === 'EN_EJECUCION') return 3;
+  if (s === 'COTIZADA' || s === 'APROBADA' || s === 'REVISION_PAGO' || s === 'REVISION PAGO' || s === 'PAGADO' || s === 'PAGADA' || s === 'LIQUIDADO' || s === 'ADELANTO') return 2;
+
+  if (requestObj) {
+    const ep = (requestObj.estado_pago || requestObj.estadoPago || requestObj.quotation?.estado_pago || '').toString().toUpperCase();
+    const qs = (requestObj.quotation?.status || requestObj.quotation?.estado || '').toString().toUpperCase();
+    const totalAmount = parseFloat(requestObj.quotation?.total || requestObj.quotation?.monto_total || requestObj.monto_total || 0);
+    const totalPaid = parseFloat(requestObj.total_pagado || requestObj.monto_pagado || requestObj.totalPagado || 0);
+    if (
+      ['PAGADO', 'LIQUIDADO', 'COMPLETADO', 'ADELANTO', 'EN_REVISION', 'REVISION_PAGO', 'REVISION PAGO', 'PAGADA'].includes(ep) ||
+      ['PAGADO', 'LIQUIDADO', 'COMPLETADO', 'ADELANTO', 'EN_REVISION', 'REVISION_PAGO', 'REVISION PAGO', 'PAGADA'].includes(qs) ||
+      (totalAmount > 0 && totalPaid > 0.01)
+    ) {
+      return 2;
+    }
+  }
+
   if (s === 'ASIGNADA' || s === 'ASIGNADO') return 1;
   return 0;
 };
@@ -118,10 +132,12 @@ const getFinancialBadge = (request) => {
     );
   }
 
+  const opIdx = getOperationalStageIndex(rawStatus, request);
   const isPreQuotation =
-    totalAmount <= 0.01 ||
-    ['PENDIENTE', 'ASIGNADA', 'ASIGNADO', 'EN_CAMINO', 'CAMINO'].includes(rawStatus) ||
-    quotationStatus === 'BORRADOR';
+    opIdx < 2 &&
+    (totalAmount <= 0.01 ||
+      ['PENDIENTE', 'ASIGNADA', 'ASIGNADO', 'EN_CAMINO', 'CAMINO'].includes(rawStatus) ||
+      quotationStatus === 'BORRADOR');
 
   if (isPreQuotation && totalPaid <= 0.01) {
     return (
@@ -238,9 +254,18 @@ const Dashboard = () => {
     return new Date().toLocaleDateString('es-ES', options);
   };
 
-  const getStatusBadge = (status) => {
+  const getStatusBadge = (status, requestObj = null) => {
     const s = (status || '').toLowerCase();
-    
+    const opIdx = requestObj ? getOperationalStageIndex(requestObj.statusRaw || requestObj.status, requestObj) : -1;
+
+    if (opIdx === 2 && (s.includes('pendiente') || s.includes('asignad') || s.includes('pagad') || s.includes('adelanto') || s.includes('revisi'))) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-600 border border-blue-100">
+          <FileText className="w-3.5 h-3.5 mr-1" /> Cotizado
+        </span>
+      );
+    }
+
     if (s.includes('pendiente')) {
       return (
         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-600 border border-amber-100">
@@ -315,7 +340,7 @@ const Dashboard = () => {
   const visibleHistory = showAllHistory ? historyRequests : historyRequests.slice(0, 6);
 
   const currentStageIndex = featuredRequest
-    ? getOperationalStageIndex(featuredRequest.statusRaw || featuredRequest.status)
+    ? getOperationalStageIndex(featuredRequest.statusRaw || featuredRequest.status, featuredRequest)
     : 0;
 
   return (
@@ -409,7 +434,7 @@ const Dashboard = () => {
                         <AlertTriangle className="w-3.5 h-3.5 mr-1" /> URGENTE
                       </span>
                     )}
-                    {getStatusBadge(featuredRequest.status)}
+                    {getStatusBadge(featuredRequest.status, featuredRequest)}
                     {getFinancialBadge(featuredRequest)}
                     {featuredRequest.status === 'Pendiente' && (
                       <button
@@ -645,7 +670,7 @@ const Dashboard = () => {
                   <div className="flex flex-col gap-1.5 pt-0.5">
                     <div className="flex items-center justify-between gap-1">
                       <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">Flujo Operativo</span>
-                      <div className="shrink-0">{getStatusBadge(request.status)}</div>
+                      <div className="shrink-0">{getStatusBadge(request.status, request)}</div>
                     </div>
                     <div className="flex items-center justify-between gap-1">
                       <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">Estado Financiero</span>
