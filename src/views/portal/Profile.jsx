@@ -108,48 +108,78 @@ const Profile = () => {
     : requests.filter(r => r.status === statusFilter);
 
   const getStatusBadge = (status, reqObj = null) => {
-    if (reqObj) {
-      const ep = (reqObj.estado_pago || reqObj.estadoPago || reqObj.quotation?.estado_pago || '').toString().toUpperCase();
-      const qs = (reqObj.quotation?.status || reqObj.quotation?.estado || '').toString().toUpperCase();
-      const paid = parseFloat(reqObj.total_pagado || reqObj.monto_pagado || reqObj.totalPagado || 0);
-      if (
-        ['PAGADO', 'LIQUIDADO', 'COMPLETADO', 'ADELANTO', 'EN_REVISION', 'REVISION_PAGO', 'REVISION PAGO', 'PAGADA'].includes(ep) ||
-        ['PAGADO', 'LIQUIDADO', 'COMPLETADO', 'ADELANTO', 'EN_REVISION', 'REVISION_PAGO', 'REVISION PAGO', 'PAGADA'].includes(qs) ||
-        paid > 0.01
-      ) {
-        if (!['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'Finalizado', 'CANCELADA', 'CANCELADO', 'ANULADA', 'RECHAZADA', 'Anulado', 'Cancelado'].includes(status)) {
-          return <span className="bg-blue-50 text-blue-600 text-[10px] font-semibold px-2 py-0.5 rounded border border-blue-100 uppercase">Cotizado</span>;
+    const sRaw = (reqObj?.statusRaw || reqObj?.estado_operativo || status || '').toString().toUpperCase();
+
+    if (sRaw === 'CANCELADA' || sRaw === 'CANCELADO' || sRaw === 'ANULADA' || sRaw === 'RECHAZADA' || status === 'Cancelado' || status === 'Anulado') {
+      return <span className="bg-rose-50 text-rose-600 text-[10px] font-semibold px-2 py-0.5 rounded border border-rose-200 uppercase">Cancelado</span>;
+    }
+    if (sRaw === 'FINALIZADA' || sRaw === 'FINALIZADO' || sRaw === 'COMPLETADA' || sRaw === 'TERMINADA' || status === 'Finalizado') {
+      return <span className="bg-emerald-50 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-emerald-200 uppercase">Finalizado</span>;
+    }
+    if (sRaw === 'EN_PROCESO' || sRaw === 'EN CURSO' || sRaw === 'PROCESO' || sRaw === 'EN_EJECUCION' || status === 'En ejecución' || status === 'En curso') {
+      return <span className="bg-purple-50 text-purple-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-purple-200 uppercase">En Proceso</span>;
+    }
+    if (sRaw === 'COTIZADA' || status === 'Cotizado') {
+      return <span className="bg-blue-50 text-blue-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-blue-200 uppercase">Cotizado</span>;
+    }
+    if (sRaw === 'ASIGNADA' || sRaw === 'ASIGNADO' || status === 'Asignado') {
+      return <span className="bg-indigo-50 text-indigo-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-indigo-200 uppercase">Asignado</span>;
+    }
+    if (status === 'En camino') {
+      return <span className="bg-sky-50 text-sky-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-sky-200 uppercase animate-pulse">En camino</span>;
+    }
+    return <span className="bg-slate-100 text-slate-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-slate-200 uppercase">Pendiente</span>;
+  };
+
+  const getFinancialBadge = (reqObj) => {
+    if (!reqObj) return null;
+    let estadoPago = (reqObj?.estado_pago || reqObj?.estadoPago || 'PENDIENTE').toString().toUpperCase();
+
+    try {
+      const localPending = JSON.parse(localStorage.getItem(`sigesto_pending_payments_${reqObj?.id}`) || localStorage.getItem(`sigesto_pending_payments_${reqObj?.idNumeric}`) || '[]');
+      if (Array.isArray(localPending) && localPending.length > 0) {
+        const allPayments = Array.isArray(reqObj?.payments) ? reqObj.payments : [];
+        const existingIds = new Set(allPayments.map(p => String(p.id_pago || p.id)));
+        const unverified = localPending.filter(lp => !existingIds.has(String(lp.id_pago || lp.id)));
+        if (unverified.length > 0 && estadoPago !== 'COMPLETADO') {
+          estadoPago = 'EN_REVISION';
         }
       }
+    } catch (e) {}
+
+    if (estadoPago === 'COMPLETADO') {
+      return (
+        <span className="inline-flex items-center bg-emerald-50 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-emerald-200 uppercase">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
+          Completado
+        </span>
+      );
     }
 
-    switch (status) {
-      case 'Pendiente':
-        return <span className="bg-amber-50 text-amber-600 text-[10px] font-semibold px-2 py-0.5 rounded border border-amber-100 uppercase">Pendiente</span>;
-      case 'Asignado':
-        return <span className="bg-indigo-50 text-indigo-600 text-[10px] font-semibold px-2 py-0.5 rounded border border-indigo-100 uppercase">Asignado</span>;
-      case 'Cotizado':
-      case 'Revision_pago':
-      case 'Revisión_pago':
-      case 'Revision pago':
-      case 'Aprobado':
-      case 'Aprobada':
-      case 'Adelanto':
-      case 'Pagado':
-        return <span className="bg-blue-50 text-blue-600 text-[10px] font-semibold px-2 py-0.5 rounded border border-blue-100 uppercase">Cotizado</span>;
-      case 'En camino':
-        return <span className="bg-sky-50 text-sky-600 text-[10px] font-semibold px-2 py-0.5 rounded border border-sky-100 uppercase animate-pulse">En camino</span>;
-      case 'En ejecución':
-      case 'En curso':
-        return <span className="bg-purple-50 text-purple-600 text-[10px] font-semibold px-2 py-0.5 rounded border border-purple-100 uppercase">En curso</span>;
-      case 'Finalizado':
-        return <span className="bg-emerald-50 text-emerald-600 text-[10px] font-semibold px-2 py-0.5 rounded border border-emerald-100 uppercase">Finalizado</span>;
-      case 'Cancelado':
-      case 'Anulado':
-        return <span className="bg-rose-50 text-rose-500 text-[10px] font-semibold px-2 py-0.5 rounded border border-rose-100 uppercase">Anulado</span>;
-      default:
-        return <span className="bg-slate-50 text-slate-500 text-[10px] font-semibold px-2 py-0.5 rounded border border-slate-100 uppercase">{status}</span>;
+    if (estadoPago === 'EN_REVISION') {
+      return (
+        <span className="inline-flex items-center bg-sky-50 text-sky-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-sky-200 uppercase">
+          <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mr-1.5 animate-pulse"></span>
+          En Revisión
+        </span>
+      );
     }
+
+    if (estadoPago === 'ADELANTO') {
+      return (
+        <span className="inline-flex items-center bg-amber-50 text-amber-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-amber-200 uppercase">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5"></span>
+          Adelanto
+        </span>
+      );
+    }
+
+    return (
+      <span className="inline-flex items-center bg-slate-100 text-slate-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-slate-200 uppercase">
+        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5"></span>
+        Pendiente de Pago
+      </span>
+    );
   };
 
   return (
@@ -345,8 +375,9 @@ const Profile = () => {
                   <div key={req.id} className="p-4 hover:bg-slate-50/50 transition-soft flex items-center justify-between gap-4">
                     
                     <div className="space-y-1 text-left min-w-0 flex-1">
-                      <div className="flex items-center space-x-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         {getStatusBadge(req.status, req)}
+                        {getFinancialBadge(req)}
                       </div>
                       <h4 className="font-bold text-slate-800 text-sm truncate">{req.type}</h4>
                       <div className="flex items-center text-[10px] text-slate-400 space-x-3.5">

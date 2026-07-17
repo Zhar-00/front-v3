@@ -30,31 +30,112 @@ const OPERATIONAL_STAGES = [
   { id: 'FINALIZADA', label: 'Finalizada', desc: 'Servicio concluido' }
 ];
 
-const getOperationalStageIndex = (rawStatus, requestObj = null, isFinancialPaidOrAdvanced = false) => {
-  const s = (rawStatus || requestObj?.statusRaw || requestObj?.status || '').toString().toUpperCase();
+const getOperationalStageIndex = (rawStatus, requestObj = null) => {
+  const s = (rawStatus || requestObj?.statusRaw || requestObj?.estado_operativo || requestObj?.status || '').toString().toUpperCase();
   if (s === 'CANCELADA' || s === 'CANCELADO' || s === 'ANULADA' || s === 'RECHAZADA') return -1;
   if (s === 'FINALIZADA' || s === 'FINALIZADO' || s === 'COMPLETADA' || s === 'TERMINADA') return 4;
   if (s === 'EN_PROCESO' || s === 'EN CURSO' || s === 'PROCESO' || s === 'EN_EJECUCION') return 3;
-  if (s === 'COTIZADA' || s === 'APROBADA' || s === 'REVISION_PAGO' || s === 'REVISION PAGO' || s === 'PAGADO' || s === 'PAGADA' || s === 'LIQUIDADO' || s === 'ADELANTO') return 2;
+  if (s === 'COTIZADA') return 2;
+  if (s === 'ASIGNADA' || s === 'ASIGNADO') return 1;
+  return 0; // PENDIENTE
+};
 
-  // Si existe confirmación o revisión de pago/cotización en la parte financiera, la etapa mínima operativa es "Cotizada" (2)
-  if (isFinancialPaidOrAdvanced) return 2;
-  if (requestObj) {
-    const ep = (requestObj.estado_pago || requestObj.estadoPago || requestObj.quotation?.estado_pago || '').toString().toUpperCase();
-    const qs = (requestObj.quotation?.status || requestObj.quotation?.estado || '').toString().toUpperCase();
-    const totalAmount = parseFloat(requestObj.quotation?.total || requestObj.quotation?.monto_total || requestObj.monto_total || 0);
-    const totalPaid = parseFloat(requestObj.total_pagado || requestObj.monto_pagado || requestObj.totalPagado || 0);
-    if (
-      ['PAGADO', 'LIQUIDADO', 'COMPLETADO', 'ADELANTO', 'EN_REVISION', 'REVISION_PAGO', 'REVISION PAGO', 'PAGADA'].includes(ep) ||
-      ['PAGADO', 'LIQUIDADO', 'COMPLETADO', 'ADELANTO', 'EN_REVISION', 'REVISION_PAGO', 'REVISION PAGO', 'PAGADA'].includes(qs) ||
-      (totalAmount > 0 && totalPaid > 0.01)
-    ) {
-      return 2;
+const getOperationalBadge = (request) => {
+  if (!request) return null;
+  const sRaw = (request?.statusRaw || request?.estado_operativo || request?.status || '').toString().toUpperCase();
+  const opIdx = getOperationalStageIndex(sRaw, request);
+
+  if (opIdx === -1 || sRaw.includes('CANCELAD') || sRaw.includes('ANULAD') || sRaw.includes('RECHAZAD')) {
+    return (
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-600 border border-rose-200 uppercase">
+        Cancelado
+      </span>
+    );
+  }
+  if (opIdx === 4 || sRaw.includes('FINALIZAD') || sRaw.includes('TERMINAD') || sRaw.includes('COMPLETAD')) {
+    return (
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
+        Finalizado
+      </span>
+    );
+  }
+  if (opIdx === 3 || sRaw.includes('EN_PROCESO') || sRaw.includes('CURSO') || sRaw.includes('PROCESO') || sRaw.includes('EJECUCION')) {
+    return (
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200 uppercase">
+        En Proceso
+      </span>
+    );
+  }
+  if (opIdx === 2 || sRaw.includes('COTIZAD')) {
+    return (
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 uppercase">
+        Cotizado
+      </span>
+    );
+  }
+  if (opIdx === 1 || sRaw.includes('ASIGNAD')) {
+    return (
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase">
+        Asignado
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200 uppercase">
+      Pendiente
+    </span>
+  );
+};
+
+const getFinancialBadge = (request) => {
+  if (!request) return null;
+  let estadoPago = (request?.estado_pago || request?.estadoPago || 'PENDIENTE').toString().toUpperCase();
+
+  try {
+    const localPending = JSON.parse(localStorage.getItem(`sigesto_pending_payments_${request?.id}`) || localStorage.getItem(`sigesto_pending_payments_${request?.idNumeric}`) || '[]');
+    if (Array.isArray(localPending) && localPending.length > 0) {
+      const allPayments = Array.isArray(request?.payments) ? request.payments : [];
+      const existingIds = new Set(allPayments.map(p => String(p.id_pago || p.id)));
+      const unverified = localPending.filter(lp => !existingIds.has(String(lp.id_pago || lp.id)));
+      if (unverified.length > 0 && estadoPago !== 'COMPLETADO') {
+        estadoPago = 'EN_REVISION';
+      }
     }
+  } catch (e) {}
+
+  if (estadoPago === 'COMPLETADO') {
+    return (
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
+        Completado
+      </span>
+    );
   }
 
-  if (s === 'ASIGNADA' || s === 'ASIGNADO') return 1;
-  return 0;
+  if (estadoPago === 'EN_REVISION') {
+    return (
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200 uppercase">
+        <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mr-1.5 animate-pulse"></span>
+        En Revisión
+      </span>
+    );
+  }
+
+  if (estadoPago === 'ADELANTO') {
+    return (
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 uppercase">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5"></span>
+        Adelanto
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200 uppercase">
+      <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5"></span>
+      Pendiente de Pago
+    </span>
+  );
 };
 
 // Componente B: Estado Financiero (Desvinculado del Flujo Operativo)
@@ -76,29 +157,17 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
   const remainingBalance = Math.max(0, totalAmount - totalPaid);
 
   const getFinancialStatusInfo = () => {
-    const estadoPago = (request?.estado_pago || request?.estadoPago || request?.quotation?.estado_pago || '').toString().toUpperCase();
-    const tipoPago = (request?.tipo_pago || request?.tipoPago || request?.quotation?.tipo_pago || '').toString().toUpperCase();
-    const rawStatus = (request?.statusRaw || request?.status || '').toString().toUpperCase();
-    const quotationStatus = (request?.quotation?.status || request?.quotation?.estado || '').toString().toUpperCase();
+    let estadoPago = (request?.estado_pago || request?.estadoPago || 'PENDIENTE').toString().toUpperCase();
 
-    // 1. Pagado / Liquidado (Verde Esmeralda)
-    const isFullyPaid =
-      (estadoPago === 'COMPLETADO' && (tipoPago === 'FINAL' || tipoPago === 'TOTAL')) ||
-      estadoPago === 'PAGADO' ||
-      estadoPago === 'LIQUIDADO' ||
-      quotationStatus === 'PAGADO' ||
-      quotationStatus === 'LIQUIDADO' ||
-      quotationStatus === 'PAGADA' ||
-      rawStatus === 'FINALIZADA' ||
-      rawStatus === 'FINALIZADO' ||
-      rawStatus === 'COMPLETADA' ||
-      rawStatus === 'TERMINADA' ||
-      (totalAmount > 0 && remainingBalance <= 0.01 && totalPaid >= totalAmount - 0.01);
+    const hasLocalPending = allPayments.some(p => ['PENDIENTE', 'EN_REVISION', 'REVISION', 'PENDIENTE_VALIDACION', 'VERIFICANDO', 'PENDIENTE DE VALIDACION', 'EN REVISION'].includes((p.estado || '').toString().toUpperCase()));
+    if (hasLocalPending && estadoPago !== 'COMPLETADO') {
+      estadoPago = 'EN_REVISION';
+    }
 
-    if (isFullyPaid) {
+    if (estadoPago === 'COMPLETADO') {
       return {
-        key: 'PAGADO',
-        label: 'Pagado / Liquidado',
+        key: 'COMPLETADO',
+        label: 'Completado (Liquidado)',
         badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
         dotClass: 'bg-emerald-500',
         cardBorder: 'border-emerald-200/80',
@@ -107,14 +176,7 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
       };
     }
 
-    // 2. Pago o Adelanto en Revisión (Azul Cielo / Sky)
-    const hasPendingValidation = allPayments.some(p => ['PENDIENTE', 'EN_REVISION', 'REVISION', 'PENDIENTE_VALIDACION', 'VERIFICANDO', 'PENDIENTE DE VALIDACION', 'EN REVISION'].includes((p.estado || '').toString().toUpperCase())) ||
-      estadoPago === 'EN_REVISION' ||
-      estadoPago === 'REVISION' ||
-      estadoPago === 'PENDIENTE_VALIDACION' ||
-      (totalPaid > 0 && !['COMPLETADO', 'VERIFICADO', 'APROBADO', 'PAGADO', 'LIQUIDADO'].includes(estadoPago) && (rawStatus === 'COTIZADA' || rawStatus === 'REVISION_PAGO'));
-
-    if (hasPendingValidation) {
+    if (estadoPago === 'EN_REVISION') {
       return {
         key: 'EN_REVISION',
         label: 'Pago en Revisión',
@@ -126,18 +188,7 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
       };
     }
 
-    // 3. Adelanto confirmado (Ámbar / Amarillo)
-    const isAdvanceConfirmed =
-      estadoPago === 'ADELANTO' ||
-      tipoPago === 'ADELANTO' ||
-      quotationStatus === 'ADELANTO' ||
-      rawStatus === 'APROBADA' ||
-      rawStatus === 'EN_PROCESO' ||
-      rawStatus === 'EN CURSO' ||
-      rawStatus === 'PROCESO' ||
-      (totalPaid > 0 && remainingBalance > 0.01);
-
-    if (isAdvanceConfirmed) {
+    if (estadoPago === 'ADELANTO') {
       return {
         key: 'ADELANTO',
         label: 'Adelanto confirmado',
@@ -149,27 +200,8 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
       };
     }
 
-    // 4. Por cotizar (Gris Suave)
-    const isPreQuotation =
-      totalAmount <= 0.01 ||
-      ['PENDIENTE', 'ASIGNADA', 'ASIGNADO', 'EN_CAMINO', 'CAMINO'].includes(rawStatus) ||
-      quotationStatus === 'BORRADOR';
-
-    if (isPreQuotation && totalPaid <= 0.01) {
-      return {
-        key: 'POR_COTIZAR',
-        label: 'Por cotizar',
-        badgeClass: 'bg-slate-100 text-slate-500 border-slate-200',
-        dotClass: 'bg-slate-400',
-        cardBorder: 'border-slate-200/70',
-        iconBg: 'bg-slate-100 text-slate-500 border-slate-200',
-        description: 'Cotización sujeta a evaluación técnica previa en la visita del especialista.'
-      };
-    }
-
-    // 5. Pendiente de pago (Gris Neutro)
     return {
-      key: 'PENDIENTE_PAGO',
+      key: 'PENDIENTE',
       label: 'Pendiente de pago',
       badgeClass: 'bg-slate-100 text-slate-700 border-slate-200',
       dotClass: 'bg-slate-400',
@@ -475,6 +507,160 @@ const OperationalStepper = ({ request, currentOperationalIndex }) => {
   );
 };
 
+// Componente de Pica Pica (Confetti) al estilo Google (campeonatos / celebración)
+const GooglePicaPica = ({ trigger }) => {
+  useEffect(() => {
+    if (!trigger) return;
+
+    // Crear canvas flotante sobre toda la ventana
+    const canvas = document.createElement('canvas');
+    canvas.style.position = 'fixed';
+    canvas.style.top = '0';
+    canvas.style.left = '0';
+    canvas.style.width = '100vw';
+    canvas.style.height = '100vh';
+    canvas.style.pointerEvents = 'none';
+    canvas.style.zIndex = '999999';
+    document.body.appendChild(canvas);
+
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    ctx.scale(dpr, dpr);
+
+    // Colores festivos estilo Google (Azul, Rojo, Amarillo, Verde, Esmeralda, Dorado, Morado, Rosa)
+    const colors = [
+      '#4285F4', '#EA4335', '#FBBC05', '#34A853', 
+      '#10B981', '#F59E0B', '#6366F1', '#EC4899', 
+      '#8B5CF6', '#06B6D4', '#EAB308'
+    ];
+
+    const particles = [];
+    const particleCount = 140;
+
+    // Generar partículas desde ambos cañones laterales (como en celebraciones de Google) y lluvia superior
+    for (let i = 0; i < particleCount; i++) {
+      const isLeftCannon = i % 3 === 0;
+      const isRightCannon = i % 3 === 1;
+      
+      let x, y, vx, vy;
+      if (isLeftCannon) {
+        x = width * 0.08;
+        y = height * 0.92;
+        vx = Math.random() * 9 + 4;
+        vy = -(Math.random() * 15 + 12);
+      } else if (isRightCannon) {
+        x = width * 0.92;
+        y = height * 0.92;
+        vx = -(Math.random() * 9 + 4);
+        vy = -(Math.random() * 15 + 12);
+      } else {
+        x = Math.random() * width;
+        y = -20 - Math.random() * 100;
+        vx = (Math.random() - 0.5) * 4;
+        vy = Math.random() * 4 + 2;
+      }
+
+      particles.push({
+        x,
+        y,
+        vx,
+        vy,
+        size: Math.random() * 6 + 6,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        shape: Math.random() > 0.35 ? 'rect' : (Math.random() > 0.5 ? 'ribbon' : 'circle'),
+        rotation: Math.random() * Math.PI * 2,
+        rotationSpeed: (Math.random() - 0.5) * 0.15,
+        wobble: Math.random() * Math.PI * 2,
+        wobbleSpeed: Math.random() * 0.1 + 0.05,
+        opacity: 1,
+        life: 0,
+        maxLife: Math.random() * 80 + 160
+      });
+    }
+
+    let animationFrameId;
+    const render = () => {
+      ctx.clearRect(0, 0, width, height);
+      let activeParticles = false;
+
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        p.life++;
+
+        if (p.life > p.maxLife) {
+          p.opacity -= 0.02;
+        }
+
+        if (p.opacity > 0) {
+          activeParticles = true;
+          p.vy += 0.28;
+          p.vx *= 0.985;
+          p.vy *= 0.99;
+
+          p.x += p.vx + Math.sin(p.wobble) * 1.2;
+          p.y += p.vy;
+          p.rotation += p.rotationSpeed;
+          p.wobble += p.wobbleSpeed;
+
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, p.opacity);
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rotation);
+
+          ctx.fillStyle = p.color;
+          if (p.shape === 'rect') {
+            ctx.scale(Math.cos(p.wobble), 1);
+            ctx.fillRect(-p.size, -p.size * 0.6, p.size * 2, p.size * 1.2);
+          } else if (p.shape === 'ribbon') {
+            ctx.scale(1, Math.sin(p.wobble));
+            ctx.fillRect(-p.size * 0.5, -p.size * 1.4, p.size, p.size * 2.8);
+          } else {
+            ctx.beginPath();
+            ctx.arc(0, 0, p.size * 0.7, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          ctx.restore();
+        }
+      }
+
+      if (activeParticles) {
+        animationFrameId = requestAnimationFrame(render);
+      } else {
+        if (canvas && canvas.parentNode) {
+          canvas.parentNode.removeChild(canvas);
+        }
+      }
+    };
+
+    render();
+
+    const handleResize = () => {
+      if (!canvas) return;
+      const newWidth = window.innerWidth;
+      const newHeight = window.innerHeight;
+      canvas.width = newWidth * dpr;
+      canvas.height = newHeight * dpr;
+      ctx.scale(dpr, dpr);
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('resize', handleResize);
+      if (canvas && canvas.parentNode) {
+        canvas.parentNode.removeChild(canvas);
+      }
+    };
+  }, [trigger]);
+
+  return null;
+};
+
 const RequestTracking = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -485,6 +671,7 @@ const RequestTracking = () => {
   const [alertModal, setAlertModal] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [confettiTrigger, setConfettiTrigger] = useState(1);
   const [evidences, setEvidences] = useState([]);
   const [isEvidencesSupported, setIsEvidencesSupported] = useState(true);
   const [evidencesError, setEvidencesError] = useState(null);
@@ -701,9 +888,8 @@ const RequestTracking = () => {
 
   const epMain = (request?.estado_pago || request?.estadoPago || request?.quotation?.estado_pago || '').toString().toUpperCase();
   const qsMain = (request?.quotation?.status || request?.quotation?.estado || '').toString().toUpperCase();
-  const hasFinancialProgress = ['PAGADO', 'LIQUIDADO', 'COMPLETADO', 'ADELANTO', 'EN_REVISION', 'REVISION_PAGO', 'REVISION PAGO', 'PAGADA'].includes(epMain) || ['PAGADO', 'LIQUIDADO', 'COMPLETADO', 'ADELANTO', 'EN_REVISION', 'REVISION_PAGO', 'REVISION PAGO', 'PAGADA'].includes(qsMain) || (totalAmount > 0 && totalPaid > 0.01);
 
-  const currentOperationalIndex = request ? getOperationalStageIndex(request.statusRaw || request.status, request, hasFinancialProgress) : 0;
+  const currentOperationalIndex = request ? getOperationalStageIndex(request.statusRaw || request.status, request) : 0;
 
   useEffect(() => {
     if (totalPaid > 0.01 && remainingBalance > 0) {
@@ -850,7 +1036,12 @@ const RequestTracking = () => {
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">Tipo: {request.type}</p>
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              <span className="text-xs text-slate-400 font-medium">Tipo: {request.type}</span>
+              <span className="text-slate-300 hidden sm:inline">•</span>
+              {getOperationalBadge(request)}
+              {getFinancialBadge(request)}
+            </div>
           </div>
         </div>
 
@@ -880,43 +1071,60 @@ const RequestTracking = () => {
 
       {/* BANNER DE AGRADECIMIENTO Y FINALIZACIÓN TOTAL */}
       {currentOperationalIndex === 4 && isFullyPaid && !isCancelled && (
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 p-6 md:p-8 text-white shadow-xl mb-8 border border-emerald-400/30 animate-slide-up group">
-          {/* Efectos de fondo flotantes y destellos */}
-          <div className="absolute -top-12 -right-12 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none group-hover:scale-125 transition-transform duration-700"></div>
-          <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-emerald-300/10 rounded-full blur-2xl pointer-events-none group-hover:scale-125 transition-transform duration-700"></div>
-          
-          <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-6">
-            <div className="flex items-center space-x-4 md:space-x-5 text-center sm:text-left">
-              <div className="p-4 bg-white/15 backdrop-blur-md rounded-2xl border border-white/20 shadow-lg shrink-0 flex items-center justify-center animate-bounce">
-                <Trophy className="w-8 h-8 text-amber-300 drop-shadow-md" />
-              </div>
-              <div>
-                <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-widest uppercase bg-white/20 backdrop-blur-sm text-emerald-100 border border-white/20">
-                    <Sparkles className="w-3 h-3 mr-1 text-amber-300 animate-pulse inline" />
-                    Servicio y Liquidación 100% Concluidos
+        <>
+          <GooglePicaPica trigger={confettiTrigger} />
+          <div className="relative overflow-hidden rounded-2xl bg-white p-4 md:p-5 mb-8 border border-slate-200/80 shadow-soft hover:shadow-md transition-all duration-300 animate-slide-up group">
+            {/* Acento superior multicolor de celebración y sutiles destellos de fondo */}
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 via-amber-400 to-indigo-500"></div>
+            <div className="absolute -right-12 -bottom-12 w-40 h-40 bg-emerald-50/60 rounded-full blur-2xl pointer-events-none group-hover:scale-125 transition-transform duration-700"></div>
+            <div className="absolute -left-12 -top-12 w-40 h-40 bg-amber-50/50 rounded-full blur-2xl pointer-events-none"></div>
+
+            <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-4 md:gap-6">
+              {/* Contenido izquierdo + centro sintetizado */}
+              <div className="flex items-center space-x-3.5 md:space-x-4 text-center sm:text-left min-w-0 flex-1">
+                <button
+                  onClick={() => setConfettiTrigger(prev => prev + 1)}
+                  title="¡Haz clic para lanzar más Pica Pica!"
+                  className="p-3 bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 rounded-2xl text-white shadow-md shadow-amber-500/20 shrink-0 flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 transition-all duration-300 group/trophy relative"
+                >
+                  <Trophy className="w-6 h-6 text-white drop-shadow-sm group-hover/trophy:rotate-12 transition-transform duration-300" />
+                  <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 border border-white"></span>
                   </span>
+                  <Sparkles className="absolute -top-2 -left-1.5 w-4 h-4 text-amber-300 animate-bounce pointer-events-none" />
+                </button>
+
+                <div className="space-y-1 min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                    <h2 className="font-display font-black text-base md:text-lg tracking-tight text-slate-800">
+                      ¡Gracias por su preferencia y confianza!
+                    </h2>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200/60 shadow-2xs">
+                      <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600 shrink-0" />
+                      100% Concluido & Liquidado
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 font-medium leading-relaxed max-w-3xl">
+                    Hemos finalizado con éxito el servicio técnico y la liquidación de pago. Ha sido un verdadero placer atenderle, ¡esperamos volver a servirle pronto!
+                  </p>
                 </div>
-                <h2 className="font-display font-black text-lg md:text-2xl tracking-tight text-white drop-shadow-sm">
-                  ¡Gracias por su preferencia y confianza!
-                </h2>
-                <p className="text-xs md:text-sm text-emerald-100 mt-1 max-w-2xl font-medium leading-relaxed">
-                  Hemos finalizado exitosamente el trabajo técnico y se ha completado la liquidación total de pago. Ha sido un placer atenderle. ¡Esperamos volver a servirle pronto!
-                </p>
               </div>
-            </div>
-            
-            <div className="shrink-0 flex items-center gap-3">
-              <div className="flex items-center gap-2 bg-white/15 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/25 shadow-inner">
-                <CheckCircle2 className="w-5 h-5 text-emerald-300 shrink-0" />
-                <div className="text-left">
-                  <span className="block text-[9px] font-bold text-emerald-200 uppercase tracking-wider">Estado Total</span>
-                  <span className="block text-xs font-extrabold text-white">Completado & Liquidado</span>
-                </div>
+
+              {/* Botón de celebración (Dispara Pica Pica estilo Google) */}
+              <div className="shrink-0 flex items-center justify-center gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 w-full sm:w-auto">
+                <button
+                  onClick={() => setConfettiTrigger(prev => prev + 1)}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 text-white shadow-sm hover:shadow-md hover:scale-105 active:scale-95 transition-all duration-300 cursor-pointer group/btn w-full sm:w-auto"
+                  title="Celebrar de nuevo con Pica Pica"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-spin group-hover/btn:animate-ping duration-1000" />
+                  <span>¡Celebrar!</span>
+                </button>
               </div>
             </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* MASTER 12-COLUMN DASHBOARD LAYOUT: 8 Columnas Principal / 4 Columnas Lateral */}

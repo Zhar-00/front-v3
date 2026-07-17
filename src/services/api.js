@@ -249,37 +249,29 @@ export const api = {
       }
 
       const mapped = items.map(s => {
-        let mappedStatus = s.estado ? s.estado.charAt(0).toUpperCase() + s.estado.slice(1).toLowerCase() : 'Pendiente';
-        const upperStatus = (s.estado || '').toString().toUpperCase();
-        const epStatus = (s.estado_pago || s.cotizacion?.estado_pago || s.cotizacion?.estado || '').toString().toUpperCase();
-        const paidAmount = parseFloat(s.total_pagado || s.monto_pagado || s.cotizacion?.total_pagado || 0);
-        const hasPaymentOrAcceptance = ['PAGADO', 'LIQUIDADO', 'COMPLETADO', 'ADELANTO', 'EN_REVISION', 'REVISION_PAGO', 'REVISION PAGO', 'PAGADA'].includes(epStatus) || paidAmount > 0.01;
-
-        if (upperStatus === 'EN_PROCESO' || upperStatus === 'EN CURSO' || upperStatus === 'PROCESO' || upperStatus === 'EN_EJECUCION') {
-          mappedStatus = 'En ejecución';
-        } else if (upperStatus === 'COTIZADA' || upperStatus === 'APROBADA' || upperStatus === 'REVISION_PAGO' || upperStatus === 'REVISION PAGO' || upperStatus === 'PAGADO' || upperStatus === 'ADELANTO' || hasPaymentOrAcceptance) {
-          if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA'].includes(upperStatus)) {
-            mappedStatus = 'Finalizado';
-          } else if (['EN_PROCESO', 'EN CURSO', 'PROCESO', 'EN_EJECUCION'].includes(upperStatus)) {
-            mappedStatus = 'En ejecución';
-          } else {
-            mappedStatus = 'Cotizado';
-          }
-        } else if (upperStatus === 'ASIGNADA' || upperStatus === 'ASIGNADO') {
+        const opStatusRaw = (s.estado_operativo || s.estado || 'PENDIENTE').toString().toUpperCase();
+        let mappedStatus = 'Pendiente';
+        if (opStatusRaw === 'ASIGNADA' || opStatusRaw === 'ASIGNADO') {
           mappedStatus = 'Asignado';
-        } else if (upperStatus === 'FINALIZADA' || upperStatus === 'FINALIZADO' || upperStatus === 'COMPLETADA' || upperStatus === 'TERMINADA') {
+        } else if (opStatusRaw === 'COTIZADA') {
+          mappedStatus = 'Cotizado';
+        } else if (opStatusRaw === 'EN_PROCESO' || opStatusRaw === 'EN CURSO' || opStatusRaw === 'PROCESO' || opStatusRaw === 'EN_EJECUCION') {
+          mappedStatus = 'En proceso';
+        } else if (opStatusRaw === 'FINALIZADA' || opStatusRaw === 'FINALIZADO' || opStatusRaw === 'COMPLETADA' || opStatusRaw === 'TERMINADA') {
           mappedStatus = 'Finalizado';
-        } else if (upperStatus === 'CANCELADA' || upperStatus === 'CANCELADO' || upperStatus === 'ANULADA' || upperStatus === 'RECHAZADA') {
-          mappedStatus = 'Anulado';
-        } else if (upperStatus === 'PENDIENTE') {
-          mappedStatus = 'Pendiente';
+        } else if (opStatusRaw === 'CANCELADA' || opStatusRaw === 'CANCELADO' || opStatusRaw === 'ANULADA' || opStatusRaw === 'RECHAZADA') {
+          mappedStatus = 'Cancelada';
+        } else {
+          mappedStatus = opStatusRaw.charAt(0).toUpperCase() + opStatusRaw.slice(1).toLowerCase();
         }
+
+        const epRaw = (s.estado_pago || s.estadoPago || s.estado_financiero || s.cotizacion?.estado_pago || 'PENDIENTE').toString().toUpperCase();
 
         return {
           id: s.uuid_solicitud || s.id_solicitud || s.id,
           idNumeric: typeof s.id_solicitud === 'number' ? s.id_solicitud : (typeof s.id === 'number' ? s.id : 0),
           status: mappedStatus,
-          statusRaw: s.estado,
+          statusRaw: opStatusRaw,
           type: s.tipo_servicio || s.tipo || 'Avería Eléctrica',
           description: s.descripcion_problema || s.descripcion || s.description || s.detalle || 'Sin descripción registrada',
           createdAt: s.fecha_creacion || s.created_at || new Date().toISOString(),
@@ -298,7 +290,7 @@ export const api = {
             status: s.cotizacion.estado,
             total: parseFloat(s.cotizacion.total || s.cotizacion.monto_total || 0),
           } : null,
-          estado_pago: s.estado_pago || s.estadoPago || s.estado_financiero || s.cotizacion?.estado_pago || '',
+          estado_pago: epRaw,
           tipo_pago: s.tipo_pago || s.tipoPago || s.cotizacion?.tipo_pago || '',
           payments: Array.isArray(s.pagos) ? s.pagos : (Array.isArray(s.payments) ? s.payments : (Array.isArray(s.cotizacion?.pagos) ? s.cotizacion.pagos : [])),
           total_pagado: parseFloat(s.total_pagado || s.monto_pagado || s.totalPagado || s.cotizacion?.total_pagado || 0),
@@ -326,36 +318,28 @@ export const api = {
       const data = await handleResponse(response);
       const s = data.solicitud || (data.data && data.data.solicitud) || data.data || data;
 
-      let mappedStatus = s.estado ? s.estado.charAt(0).toUpperCase() + s.estado.slice(1).toLowerCase() : 'Pendiente';
-      const upperStatus = (s.estado || '').toString().toUpperCase();
-      const epStatus = (s.estado_pago || s.cotizacion?.estado_pago || s.cotizacion?.estado || '').toString().toUpperCase();
-      const paidAmount = parseFloat(s.total_pagado || s.monto_pagado || s.cotizacion?.total_pagado || 0);
-      const hasPaymentOrAcceptance = ['PAGADO', 'LIQUIDADO', 'COMPLETADO', 'ADELANTO', 'EN_REVISION', 'REVISION_PAGO', 'REVISION PAGO', 'PAGADA'].includes(epStatus) || paidAmount > 0.01;
-
-      if (upperStatus === 'EN_PROCESO' || upperStatus === 'EN CURSO' || upperStatus === 'PROCESO' || upperStatus === 'EN_EJECUCION') {
-        mappedStatus = 'En ejecución';
-      } else if (upperStatus === 'COTIZADA' || upperStatus === 'APROBADA' || upperStatus === 'REVISION_PAGO' || upperStatus === 'REVISION PAGO' || upperStatus === 'PAGADO' || upperStatus === 'ADELANTO' || hasPaymentOrAcceptance) {
-        if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA'].includes(upperStatus)) {
-          mappedStatus = 'Finalizado';
-        } else if (['EN_PROCESO', 'EN CURSO', 'PROCESO', 'EN_EJECUCION'].includes(upperStatus)) {
-          mappedStatus = 'En ejecución';
-        } else {
-          mappedStatus = 'Cotizado';
-        }
-      } else if (upperStatus === 'ASIGNADA' || upperStatus === 'ASIGNADO') {
+      const opStatusRaw = (s.estado_operativo || s.estado || 'PENDIENTE').toString().toUpperCase();
+      let mappedStatus = 'Pendiente';
+      if (opStatusRaw === 'ASIGNADA' || opStatusRaw === 'ASIGNADO') {
         mappedStatus = 'Asignado';
-      } else if (upperStatus === 'FINALIZADA' || upperStatus === 'FINALIZADO' || upperStatus === 'COMPLETADA' || upperStatus === 'TERMINADA') {
+      } else if (opStatusRaw === 'COTIZADA') {
+        mappedStatus = 'Cotizado';
+      } else if (opStatusRaw === 'EN_PROCESO' || opStatusRaw === 'EN CURSO' || opStatusRaw === 'PROCESO' || opStatusRaw === 'EN_EJECUCION') {
+        mappedStatus = 'En proceso';
+      } else if (opStatusRaw === 'FINALIZADA' || opStatusRaw === 'FINALIZADO' || opStatusRaw === 'COMPLETADA' || opStatusRaw === 'TERMINADA') {
         mappedStatus = 'Finalizado';
-      } else if (upperStatus === 'CANCELADA' || upperStatus === 'CANCELADO' || upperStatus === 'ANULADA' || upperStatus === 'RECHAZADA') {
-        mappedStatus = 'Anulado';
-      } else if (upperStatus === 'PENDIENTE') {
-        mappedStatus = 'Pendiente';
+      } else if (opStatusRaw === 'CANCELADA' || opStatusRaw === 'CANCELADO' || opStatusRaw === 'ANULADA' || opStatusRaw === 'RECHAZADA') {
+        mappedStatus = 'Cancelada';
+      } else {
+        mappedStatus = opStatusRaw.charAt(0).toUpperCase() + opStatusRaw.slice(1).toLowerCase();
       }
+
+      const epRaw = (s.estado_pago || s.estadoPago || s.estado_financiero || data.estado_pago || s.cotizacion?.estado_pago || 'PENDIENTE').toString().toUpperCase();
 
       return {
         id: s.uuid_solicitud || s.id_solicitud || s.id,
         status: mappedStatus,
-        statusRaw: s.estado,
+        statusRaw: opStatusRaw,
         type: s.tipo_servicio || s.tipo || 'Avería Eléctrica',
         description: s.descripcion_problema || s.descripcion || s.description || s.detalle || 'Sin descripción registrada',
         location: { address: s.direccion_servicio || s.direccion || s.location?.address || s.direccion_solicitud || 'Dirección no especificada' },
@@ -381,7 +365,7 @@ export const api = {
           total: parseFloat(s.cotizacion.total || s.cotizacion.monto_total || 0),
           items: s.cotizacion.detalles || s.cotizacion.items || []
         } : null,
-        estado_pago: s.estado_pago || s.estadoPago || s.estado_financiero || data.estado_pago || s.cotizacion?.estado_pago || '',
+        estado_pago: epRaw,
         tipo_pago: s.tipo_pago || s.tipoPago || data.tipo_pago || s.cotizacion?.tipo_pago || '',
         payments: Array.isArray(s.pagos) ? s.pagos : (Array.isArray(s.payments) ? s.payments : (Array.isArray(data.pagos) ? data.pagos : (Array.isArray(s.cotizacion?.pagos) ? s.cotizacion.pagos : []))),
         total_pagado: parseFloat(s.total_pagado || s.monto_pagado || s.totalPagado || data.total_pagado || s.cotizacion?.total_pagado || 0),

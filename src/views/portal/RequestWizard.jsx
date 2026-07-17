@@ -52,6 +52,7 @@ import {
   AlertTriangle,
   Locate,
   Search,
+  Clock,
   Image as ImageIcon
 } from 'lucide-react';
 
@@ -72,7 +73,7 @@ const RequestWizard = () => {
   const [includeMapInfo, setIncludeMapInfo] = useState(false); // Marcador opcional para enviar información del mapa (desactivado por defecto)
   const [isEmergency, setIsEmergency] = useState(false);
   const [scheduledDate, setScheduledDate] = useState('');
-  const [scheduledTime, setScheduledTime] = useState('10:00');
+  const [scheduledTime, setScheduledTime] = useState('');
 
   // Tipos de Incidencias con Iconos
   const INCIDENT_TYPES = [
@@ -155,8 +156,8 @@ const RequestWizard = () => {
       return;
     }
     if (step === 4) {
-      if (!isEmergency && (!scheduledDate || !scheduledTime)) {
-        alert('Por favor ingrese la fecha y rango horario para programar la visita.');
+      if (!isEmergency && !scheduledDate) {
+        alert('Por favor ingrese la fecha para programar la visita.');
         return;
       }
     }
@@ -192,7 +193,7 @@ const RequestWizard = () => {
         isEmergency,
         es_urgente: isEmergency,
         scheduledDate,
-        scheduledTime
+        scheduledTime: scheduledTime || null
       });
       navigate(`/tracking/${result.id}`);
     } catch (err) {
@@ -548,18 +549,16 @@ const RequestWizard = () => {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-600">Rango Horario</label>
-                      <select
-                        value={scheduledTime}
-                        onChange={(e) => setScheduledTime(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:border-indigo-500 focus:bg-white transition-soft appearance-none"
-                      >
-                        <option value="08:00">Mañana Temprano (08:00 - 10:00)</option>
-                        <option value="10:00">Media Mañana (10:00 - 12:00)</option>
-                        <option value="12:00">Mediodía (12:00 - 14:00)</option>
-                        <option value="14:00">Tarde Temprano (14:00 - 16:00)</option>
-                        <option value="16:00">Media Tarde (16:00 - 18:00)</option>
-                      </select>
+                      <label className="text-xs font-semibold text-slate-600">Hora de Visita</label>
+                      <div className="relative">
+                        <Clock className="absolute left-3 top-[50%] -translate-y-[50%] w-4.5 h-4.5 text-slate-400 pointer-events-none" />
+                        <input
+                          type="time"
+                          value={scheduledTime}
+                          onChange={(e) => setScheduledTime(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:border-indigo-500 focus:bg-white transition-soft"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>

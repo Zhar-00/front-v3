@@ -14,7 +14,9 @@ import {
   Activity,
   CreditCard,
   MapPin,
-  FileText
+  FileText,
+  Sparkles,
+  Calendar
 } from 'lucide-react';
 
 const OPERATIONAL_STAGES = [
@@ -26,124 +28,54 @@ const OPERATIONAL_STAGES = [
 ];
 
 const getOperationalStageIndex = (rawStatus, requestObj = null) => {
-  const s = (rawStatus || requestObj?.statusRaw || requestObj?.status || '').toString().toUpperCase();
+  const s = (rawStatus || requestObj?.statusRaw || requestObj?.estado_operativo || requestObj?.status || '').toString().toUpperCase();
   if (s === 'CANCELADA' || s === 'CANCELADO' || s === 'ANULADA' || s === 'RECHAZADA') return -1;
   if (s === 'FINALIZADA' || s === 'FINALIZADO' || s === 'COMPLETADA' || s === 'TERMINADA') return 4;
   if (s === 'EN_PROCESO' || s === 'EN CURSO' || s === 'PROCESO' || s === 'EN_EJECUCION') return 3;
-  if (s === 'COTIZADA' || s === 'APROBADA' || s === 'REVISION_PAGO' || s === 'REVISION PAGO' || s === 'PAGADO' || s === 'PAGADA' || s === 'LIQUIDADO' || s === 'ADELANTO') return 2;
-
-  if (requestObj) {
-    const ep = (requestObj.estado_pago || requestObj.estadoPago || requestObj.quotation?.estado_pago || '').toString().toUpperCase();
-    const qs = (requestObj.quotation?.status || requestObj.quotation?.estado || '').toString().toUpperCase();
-    const totalAmount = parseFloat(requestObj.quotation?.total || requestObj.quotation?.monto_total || requestObj.monto_total || 0);
-    const totalPaid = parseFloat(requestObj.total_pagado || requestObj.monto_pagado || requestObj.totalPagado || 0);
-    if (
-      ['PAGADO', 'LIQUIDADO', 'COMPLETADO', 'ADELANTO', 'EN_REVISION', 'REVISION_PAGO', 'REVISION PAGO', 'PAGADA'].includes(ep) ||
-      ['PAGADO', 'LIQUIDADO', 'COMPLETADO', 'ADELANTO', 'EN_REVISION', 'REVISION_PAGO', 'REVISION PAGO', 'PAGADA'].includes(qs) ||
-      (totalAmount > 0 && totalPaid > 0.01)
-    ) {
-      return 2;
-    }
-  }
-
+  if (s === 'COTIZADA') return 2;
   if (s === 'ASIGNADA' || s === 'ASIGNADO') return 1;
-  return 0;
+  return 0; // PENDIENTE
 };
 
 const getFinancialBadge = (request) => {
   if (!request) return null;
-  const estadoPago = (request?.estado_pago || request?.estadoPago || request?.quotation?.estado_pago || '').toString().toUpperCase();
-  const tipoPago = (request?.tipo_pago || request?.tipoPago || request?.quotation?.tipo_pago || '').toString().toUpperCase();
-  const rawStatus = (request?.statusRaw || request?.status || '').toString().toUpperCase();
-  const quotationStatus = (request?.quotation?.status || request?.quotation?.estado || '').toString().toUpperCase();
+  let estadoPago = (request?.estado_pago || request?.estadoPago || 'PENDIENTE').toString().toUpperCase();
 
-  const totalAmount = request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : parseFloat(request?.monto_total || request?.total || 0);
-  
-  let allPayments = Array.isArray(request?.payments) ? [...request.payments] : [];
   try {
     const localPending = JSON.parse(localStorage.getItem(`sigesto_pending_payments_${request?.id}`) || localStorage.getItem(`sigesto_pending_payments_${request?.idNumeric}`) || '[]');
     if (Array.isArray(localPending) && localPending.length > 0) {
+      const allPayments = Array.isArray(request?.payments) ? request.payments : [];
       const existingIds = new Set(allPayments.map(p => String(p.id_pago || p.id)));
       const unverified = localPending.filter(lp => !existingIds.has(String(lp.id_pago || lp.id)));
-      allPayments = [...unverified, ...allPayments];
+      if (unverified.length > 0 && estadoPago !== 'COMPLETADO') {
+        estadoPago = 'EN_REVISION';
+      }
     }
   } catch (e) {}
 
-  const totalPaidFromPayments = allPayments
-    .filter(p => p.estado !== 'RECHAZADO' && p.estado !== 'CANCELADO' && (p.estado || '').toString().toUpperCase() !== 'RECHAZADO' && (p.estado || '').toString().toUpperCase() !== 'CANCELADO')
-    .reduce((sum, p) => sum + parseFloat(p.monto_pagado || p.monto || 0), 0);
-  const totalPaid = Math.max(totalPaidFromPayments, parseFloat(request?.total_pagado || request?.monto_pagado || request?.totalPagado || 0));
-  const remainingBalance = Math.max(0, totalAmount - totalPaid);
-
-  const isFullyPaid =
-    (estadoPago === 'COMPLETADO' && (tipoPago === 'FINAL' || tipoPago === 'TOTAL')) ||
-    estadoPago === 'PAGADO' ||
-    estadoPago === 'LIQUIDADO' ||
-    quotationStatus === 'PAGADO' ||
-    quotationStatus === 'LIQUIDADO' ||
-    quotationStatus === 'PAGADA' ||
-    rawStatus === 'FINALIZADA' ||
-    rawStatus === 'FINALIZADO' ||
-    rawStatus === 'COMPLETADA' ||
-    rawStatus === 'TERMINADA' ||
-    (totalAmount > 0 && remainingBalance <= 0.01 && totalPaid >= totalAmount - 0.01);
-
-  if (isFullyPaid) {
+  if (estadoPago === 'COMPLETADO') {
     return (
       <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
-        Pagado / Liquidado
+        Completado
       </span>
     );
   }
 
-  const hasPendingValidation =
-    allPayments.some(p => ['PENDIENTE', 'EN_REVISION', 'REVISION', 'PENDIENTE_VALIDACION', 'VERIFICANDO', 'PENDIENTE DE VALIDACION', 'EN REVISION'].includes((p.estado || '').toString().toUpperCase())) ||
-    estadoPago === 'EN_REVISION' ||
-    estadoPago === 'REVISION' ||
-    estadoPago === 'PENDIENTE_VALIDACION' ||
-    (totalPaid > 0 && !['COMPLETADO', 'VERIFICADO', 'APROBADO', 'PAGADO', 'LIQUIDADO'].includes(estadoPago) && (rawStatus === 'COTIZADA' || rawStatus === 'REVISION_PAGO'));
-
-  if (hasPendingValidation) {
+  if (estadoPago === 'EN_REVISION') {
     return (
       <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
         <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mr-1.5 animate-pulse"></span>
-        Pago en Revisión
+        En Revisión
       </span>
     );
   }
 
-  const isAdvanceConfirmed =
-    estadoPago === 'ADELANTO' ||
-    tipoPago === 'ADELANTO' ||
-    quotationStatus === 'ADELANTO' ||
-    rawStatus === 'APROBADA' ||
-    rawStatus === 'EN_PROCESO' ||
-    rawStatus === 'EN CURSO' ||
-    rawStatus === 'PROCESO' ||
-    (totalPaid > 0 && remainingBalance > 0.01);
-
-  if (isAdvanceConfirmed) {
+  if (estadoPago === 'ADELANTO') {
     return (
       <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
         <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5"></span>
-        Adelanto confirmado
-      </span>
-    );
-  }
-
-  const opIdx = getOperationalStageIndex(rawStatus, request);
-  const isPreQuotation =
-    opIdx < 2 &&
-    (totalAmount <= 0.01 ||
-      ['PENDIENTE', 'ASIGNADA', 'ASIGNADO', 'EN_CAMINO', 'CAMINO'].includes(rawStatus) ||
-      quotationStatus === 'BORRADOR');
-
-  if (isPreQuotation && totalPaid <= 0.01) {
-    return (
-      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
-        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5"></span>
-        Por cotizar
+        Adelanto
       </span>
     );
   }
@@ -151,7 +83,7 @@ const getFinancialBadge = (request) => {
   return (
     <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
       <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5"></span>
-      Pendiente de pago
+      Pendiente de Pago
     </span>
   );
 };
@@ -245,9 +177,12 @@ const Dashboard = () => {
     }
   };
 
-  const activeCount = requests.filter(r => ['Pendiente', 'Asignado', 'En camino', 'En ejecución'].includes(r.status)).length;
-  const pendingPaymentCount = requests.filter(r => r.quotation?.status === 'Aprobada').length;
-  const completedCount = requests.filter(r => r.status === 'Finalizado').length;
+  const activeCount = requests.filter(r => {
+    const idx = getOperationalStageIndex(r.statusRaw || r.status, r);
+    return idx >= 0 && idx < 4;
+  }).length;
+  const pendingPaymentCount = requests.filter(r => (r.estado_pago || r.estadoPago || '').toString().toUpperCase() === 'EN_REVISION' || (r.estado_pago || r.estadoPago || '').toString().toUpperCase() === 'PENDIENTE').length;
+  const completedCount = requests.filter(r => getOperationalStageIndex(r.statusRaw || r.status, r) === 4).length;
 
   const getFormattedDate = () => {
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
@@ -255,69 +190,47 @@ const Dashboard = () => {
   };
 
   const getStatusBadge = (status, requestObj = null) => {
-    const s = (status || '').toLowerCase();
-    const opIdx = requestObj ? getOperationalStageIndex(requestObj.statusRaw || requestObj.status, requestObj) : -1;
+    const sRaw = (requestObj?.statusRaw || status || '').toString().toUpperCase();
+    const opIdx = getOperationalStageIndex(sRaw, requestObj);
 
-    if (opIdx === 2 && (s.includes('pendiente') || s.includes('asignad') || s.includes('pagad') || s.includes('adelanto') || s.includes('revisi'))) {
+    if (opIdx === -1 || sRaw.includes('CANCELAD') || sRaw.includes('ANULAD') || sRaw.includes('RECHAZAD')) {
       return (
-        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-600 border border-blue-100">
-          <FileText className="w-3.5 h-3.5 mr-1" /> Cotizado
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-600 border border-rose-200">
+          <XCircle className="w-3.5 h-3.5 mr-1" /> Cancelado
         </span>
       );
     }
-
-    if (s.includes('pendiente')) {
+    if (opIdx === 4 || sRaw.includes('FINALIZAD') || sRaw.includes('TERMINAD') || sRaw.includes('COMPLETAD')) {
       return (
-        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-600 border border-amber-100">
-          <Clock className="w-3.5 h-3.5 mr-1" /> Pendiente
-        </span>
-      );
-    }
-    if (s.includes('cotizad') || s.includes('aprobada') || s.includes('revisi') || s.includes('adelanto') || s.includes('pagad')) {
-      return (
-        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-600 border border-blue-100">
-          <FileText className="w-3.5 h-3.5 mr-1" /> Cotizado
-        </span>
-      );
-    }
-    if (s.includes('asignad')) {
-      return (
-        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100">
-          <User className="w-3.5 h-3.5 mr-1" /> Asignado
-        </span>
-      );
-    }
-    if (s.includes('camino')) {
-      return (
-        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-50 text-sky-600 border border-sky-100">
-          <Activity className="w-3.5 h-3.5 mr-1 animate-pulse" /> En Camino
-        </span>
-      );
-    }
-    if (s.includes('ejecución') || s.includes('curso') || s.includes('proceso')) {
-      return (
-        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-purple-50 text-purple-600 border border-purple-100">
-          <Wrench className="w-3.5 h-3.5 mr-1" /> En Curso
-        </span>
-      );
-    }
-    if (s.includes('finalizad') || s.includes('terminad') || s.includes('completad')) {
-      return (
-        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
           <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Finalizado
         </span>
       );
     }
-    if (s.includes('cancelad') || s.includes('anulad') || s.includes('rechazad')) {
+    if (opIdx === 3 || sRaw.includes('EN_PROCESO') || sRaw.includes('CURSO') || sRaw.includes('PROCESO') || sRaw.includes('EJECUCION')) {
       return (
-        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-500 border border-rose-100">
-          <XCircle className="w-3.5 h-3.5 mr-1" /> Anulado
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+          <Wrench className="w-3.5 h-3.5 mr-1" /> En Proceso
+        </span>
+      );
+    }
+    if (opIdx === 2 || sRaw.includes('COTIZAD')) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+          <FileText className="w-3.5 h-3.5 mr-1" /> Cotizado
+        </span>
+      );
+    }
+    if (opIdx === 1 || sRaw.includes('ASIGNAD')) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+          <User className="w-3.5 h-3.5 mr-1" /> Asignado
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-50 text-slate-600 border border-slate-100">
-        {status}
+      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+        <Clock className="w-3.5 h-3.5 mr-1" /> Pendiente
       </span>
     );
   };
@@ -352,27 +265,37 @@ const Dashboard = () => {
         {/* COLUMNA PRINCIPAL (8 COLUMNAS): Cabecera de Bienvenida + Servicio Destacado + Historial */}
         <div className="lg:col-span-8 space-y-6 lg:space-y-8">
           
-          {/* 1. Cabecera de bienvenida */}
-          <div className="bg-gradient-to-r from-indigo-600 to-indigo-500 rounded-3xl p-6 md:p-8 text-white shadow-soft-lg relative overflow-hidden">
-            <div className="absolute right-0 bottom-0 opacity-10 translate-x-10 translate-y-10">
-              <Wrench className="w-72 h-72" />
+          {/* 1. Cabecera de bienvenida (Fondo blanco y estética limpia coherente con el sistema) */}
+          <div className="bg-white rounded-3xl p-6 md:p-8 border border-slate-200/80 shadow-soft relative overflow-hidden group hover:shadow-md transition-all duration-300">
+            {/* Acento superior elegante y destellos suaves de fondo */}
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-emerald-500"></div>
+            <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-indigo-50/60 rounded-full blur-2xl pointer-events-none group-hover:scale-125 transition-transform duration-700"></div>
+            <div className="absolute right-6 top-1/2 -translate-y-1/2 opacity-[0.03] pointer-events-none text-indigo-900 group-hover:scale-110 group-hover:rotate-6 transition-transform duration-700">
+              <Wrench className="w-56 h-56" />
             </div>
-            <div className="relative z-10 space-y-2 flex flex-col sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <span className="text-indigo-100 text-xs font-semibold uppercase tracking-wider">{getFormattedDate()}</span>
-                <h1 className="font-display font-extrabold text-2xl md:text-3xl leading-tight">
-                  Hola, {user?.name}
+
+            <div className="relative z-10 space-y-4 sm:space-y-0 sm:flex sm:items-center sm:justify-between gap-6">
+              <div className="space-y-1.5 min-w-0 flex-1">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide uppercase bg-slate-100/80 text-slate-600 border border-slate-200/60">
+                  <Calendar className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                  <span>{getFormattedDate()}</span>
+                </div>
+                <h1 className="font-display font-black text-2xl md:text-3xl tracking-tight text-slate-800 flex items-center gap-2">
+                  <span>Hola, {user?.name || 'Usuario'}</span>
+                  <Sparkles className="w-5 h-5 text-amber-400 animate-pulse shrink-0 inline" />
                 </h1>
-                <p className="text-indigo-100 text-xs md:text-sm max-w-lg font-normal mt-1">
-                  Bienvenido a tu panel de SIGESTO. Aquí puedes ver el estado detallado de tus servicios o crear nuevas solicitudes.
+                <p className="text-slate-600 text-xs md:text-sm max-w-xl font-medium leading-relaxed">
+                  Bienvenido a tu panel de <span className="font-bold text-indigo-600">SIGESTO</span>. Aquí puedes ver el estado detallado de tus servicios en tiempo real o crear nuevas solicitudes de forma rápida.
                 </p>
               </div>
-              <div className="mt-4 sm:mt-0 shrink-0">
+
+              <div className="shrink-0 pt-2 sm:pt-0">
                 <Link 
                   to="/wizard" 
-                  className="inline-flex items-center justify-center px-6 py-3 bg-white text-indigo-600 hover:bg-slate-50 text-sm font-bold rounded-xl shadow-soft transition-soft hover-lift"
+                  className="inline-flex items-center justify-center px-6 py-3.5 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 text-sm font-bold rounded-2xl shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30 transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0 group/btn"
                 >
-                  Nueva Solicitud <PlusCircle className="w-4.5 h-4.5 ml-2" />
+                  <PlusCircle className="w-4.5 h-4.5 mr-2 group-hover/btn:rotate-90 transition-transform duration-300" />
+                  <span>Nueva Solicitud</span>
                 </Link>
               </div>
             </div>
