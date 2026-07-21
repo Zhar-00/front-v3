@@ -28,54 +28,120 @@ const OPERATIONAL_STAGES = [
 ];
 
 const getOperationalStageIndex = (rawStatus, requestObj = null) => {
-  const s = (rawStatus || requestObj?.statusRaw || requestObj?.estado_operativo || requestObj?.status || '').toString().toUpperCase();
-  if (s === 'CANCELADA' || s === 'CANCELADO' || s === 'ANULADA' || s === 'RECHAZADA') return -1;
-  if (s === 'FINALIZADA' || s === 'FINALIZADO' || s === 'COMPLETADA' || s === 'TERMINADA') return 4;
-  if (s === 'EN_PROCESO' || s === 'EN CURSO' || s === 'PROCESO' || s === 'EN_EJECUCION') return 3;
-  if (s === 'COTIZADA') return 2;
-  if (s === 'ASIGNADA' || s === 'ASIGNADO') return 1;
+  const s = (rawStatus || requestObj?.statusRaw || requestObj?.estado_operativo || requestObj?.estado || requestObj?.status || '').toString().toUpperCase();
+  if (['CANCELADA', 'CANCELADO', 'ANULADA', 'RECHAZADA'].includes(s) || s.includes('CANCELAD') || s.includes('RECHAZAD') || s.includes('ANULAD')) return -1;
+  if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'PAGADA', 'PAGADO'].includes(s) || s.includes('FINALIZAD') || s.includes('TERMINAD') || s.includes('COMPLETAD')) return 4;
+  if (['EN_PROCESO', 'EN CURSO', 'PROCESO', 'EN_EJECUCION'].includes(s) || s.includes('PROCESO') || s.includes('CURSO') || s.includes('EJECUCION')) return 3;
+  if (['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO'].includes(s) || s.includes('COTIZAD') || s.includes('REVISION') || s.includes('REVICION') || s.includes('APROBAD')) return 2;
+
+  let hasPaymentsOrReview = requestObj?.hasInReviewPayment === true ||
+    (Array.isArray(requestObj?.payments) && requestObj.payments.length > 0) ||
+    parseFloat(requestObj?.total_pagado || requestObj?.monto_pagado || requestObj?.totalPagado || 0) > 0.01 ||
+    ['REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_VALIDACION', 'VERIFICANDO'].includes((requestObj?.estado_pago || requestObj?.estadoPago || requestObj?.cotizacion?.estado_pago || '').toString().toUpperCase()) ||
+    (requestObj?.quotation && (parseFloat(requestObj.quotation.total || requestObj.quotation.monto_total || 0) > 0 || (requestObj.quotation.status && requestObj.quotation.status !== 'BORRADOR')));
+
+  if (!hasPaymentsOrReview && requestObj && (requestObj.id || requestObj.idNumeric)) {
+    try {
+      const localPending = JSON.parse(localStorage.getItem(`sigesto_pending_payments_${requestObj.id}`) || localStorage.getItem(`sigesto_pending_payments_${requestObj.idNumeric}`) || '[]');
+      if (Array.isArray(localPending) && localPending.length > 0) {
+        hasPaymentsOrReview = true;
+      }
+    } catch (e) {}
+  }
+
+  if (hasPaymentsOrReview) return 2; // COTIZADA como mínimo porque ya existe cotización/abono
+
+  if (['ASIGNADA', 'ASIGNADO'].includes(s) || s.includes('ASIGNAD')) return 1;
   return 0; // PENDIENTE
+};
+
+const getVisualOperationalStageIndex = (requestObj, rawIndex, paymentsList = []) => {
+  if (!requestObj) return rawIndex;
+  let maxIndex = rawIndex;
+
+  const timeline = Array.isArray(requestObj.timeline) ? requestObj.timeline : (Array.isArray(requestObj.historial) ? requestObj.historial : []);
+  timeline.forEach(item => {
+    const s = (item.estado || item.status || item.titulo || item.title || item.descripcion || '').toString().toUpperCase();
+    if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'PAGADA', 'PAGADO'].some(k => s.includes(k))) {
+      if (maxIndex < 4) maxIndex = 4;
+    } else if (['EN_PROCESO', 'EN CURSO', 'PROCESO', 'EN_EJECUCION'].some(k => s.includes(k))) {
+      if (maxIndex < 3) maxIndex = 3;
+    } else if (['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO'].some(k => s.includes(k))) {
+      if (maxIndex < 2) maxIndex = 2;
+    } else if (['ASIGNADA', 'ASIGNADO'].some(k => s.includes(k))) {
+      if (maxIndex < 1) maxIndex = 1;
+    }
+  });
+
+  const allPays = Array.isArray(paymentsList) && paymentsList.length > 0 ? paymentsList : (Array.isArray(requestObj.payments) ? requestObj.payments : (Array.isArray(requestObj.pagos) ? requestObj.pagos : []));
+  const hasVerifiedPayment = allPays.some(p => ['VERIFICADO', 'APROBADO', 'COMPLETADO'].includes((p.estado || '').toString().toUpperCase()));
+  if (hasVerifiedPayment && maxIndex < 3) {
+    maxIndex = 3;
+  }
+
+  const reqId = requestObj.id || requestObj.idNumeric || requestObj.uuid_solicitud || 'unknown';
+  if (reqId && reqId !== 'unknown') {
+    const storageKey = `sigesto_visual_max_op_stage_${reqId}`;
+    try {
+      const storedMax = Number(localStorage.getItem(storageKey) || 0);
+      if (!isNaN(storedMax) && storedMax > maxIndex && storedMax <= 4) {
+        maxIndex = storedMax;
+      } else if (maxIndex > storedMax) {
+        localStorage.setItem(storageKey, String(maxIndex));
+      }
+    } catch (e) {}
+  }
+
+  return maxIndex;
 };
 
 const getFinancialBadge = (request) => {
   if (!request) return null;
-  let estadoPago = (request?.estado_pago || request?.estadoPago || 'PENDIENTE').toString().toUpperCase();
+  const estado = (request?.statusRaw || request?.estado_operativo || request?.estado || request?.status || '').toString().toUpperCase();
+  const totalAmount = parseFloat(request?.quotation?.total || request?.quotation?.monto_total || 0);
 
+  let allPayments = Array.isArray(request?.payments) ? [...request.payments] : [];
   try {
     const localPending = JSON.parse(localStorage.getItem(`sigesto_pending_payments_${request?.id}`) || localStorage.getItem(`sigesto_pending_payments_${request?.idNumeric}`) || '[]');
     if (Array.isArray(localPending) && localPending.length > 0) {
-      const allPayments = Array.isArray(request?.payments) ? request.payments : [];
       const existingIds = new Set(allPayments.map(p => String(p.id_pago || p.id)));
       const unverified = localPending.filter(lp => !existingIds.has(String(lp.id_pago || lp.id)));
-      if (unverified.length > 0 && estadoPago !== 'COMPLETADO') {
-        estadoPago = 'EN_REVISION';
-      }
+      allPayments = [...unverified, ...allPayments];
     }
   } catch (e) {}
 
-  if (estadoPago === 'COMPLETADO') {
+  const totalPaid = Math.max(
+    allPayments
+      .filter(p => !['RECHAZADO', 'CANCELADO'].includes((p.estado || '').toString().toUpperCase()))
+      .reduce((sum, p) => sum + parseFloat(p.monto_pagado || p.monto || 0), 0),
+    parseFloat(request?.total_pagado || request?.monto_pagado || request?.totalPagado || 0)
+  );
+
+  const hasInReviewPayment = allPayments.some(p => ['EN REVISION', 'EN_REVISION', 'REVISION', 'PENDIENTE_VALIDACION', 'PENDIENTE DE VALIDACION', 'VERIFICANDO'].includes((p.estado || '').toString().toUpperCase()));
+
+  if ((totalAmount > 0 && totalPaid >= totalAmount - 0.01) || estado === 'PAGADA' || (request?.estado_pago || '').toString().toUpperCase() === 'COMPLETADO') {
     return (
       <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
-        Completado
+        Pagado / Liquidado
       </span>
     );
   }
 
-  if (estadoPago === 'EN_REVISION') {
+  if (estado === 'REVISION_PAGO' || hasInReviewPayment || (request?.estado_pago || '').toString().toUpperCase() === 'EN_REVISION') {
     return (
       <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
         <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mr-1.5 animate-pulse"></span>
-        En Revisión
+        Pago en Revisión
       </span>
     );
   }
 
-  if (estadoPago === 'ADELANTO') {
+  if (totalPaid > 0.01 || ['APROBADA', 'EN_PROCESO'].includes(estado) || (request?.estado_pago || '').toString().toUpperCase() === 'ADELANTO') {
     return (
       <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
         <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5"></span>
-        Adelanto
+        Adelanto Confirmado
       </span>
     );
   }
@@ -83,7 +149,7 @@ const getFinancialBadge = (request) => {
   return (
     <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
       <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5"></span>
-      Pendiente de Pago
+      Por Cotizar / Pendiente de Pago
     </span>
   );
 };
@@ -191,7 +257,7 @@ const Dashboard = () => {
 
   const getStatusBadge = (status, requestObj = null) => {
     const sRaw = (requestObj?.statusRaw || status || '').toString().toUpperCase();
-    const opIdx = getOperationalStageIndex(sRaw, requestObj);
+    const opIdx = getVisualOperationalStageIndex(requestObj, getOperationalStageIndex(sRaw, requestObj));
 
     if (opIdx === -1 || sRaw.includes('CANCELAD') || sRaw.includes('ANULAD') || sRaw.includes('RECHAZAD')) {
       return (
@@ -253,7 +319,7 @@ const Dashboard = () => {
   const visibleHistory = showAllHistory ? historyRequests : historyRequests.slice(0, 6);
 
   const currentStageIndex = featuredRequest
-    ? getOperationalStageIndex(featuredRequest.statusRaw || featuredRequest.status, featuredRequest)
+    ? getVisualOperationalStageIndex(featuredRequest, getOperationalStageIndex(featuredRequest.statusRaw || featuredRequest.status, featuredRequest))
     : 0;
 
   return (

@@ -31,49 +31,107 @@ const OPERATIONAL_STAGES = [
 ];
 
 const getOperationalStageIndex = (rawStatus, requestObj = null) => {
-  const s = (rawStatus || requestObj?.statusRaw || requestObj?.estado_operativo || requestObj?.status || '').toString().toUpperCase();
-  if (s === 'CANCELADA' || s === 'CANCELADO' || s === 'ANULADA' || s === 'RECHAZADA') return -1;
-  if (s === 'FINALIZADA' || s === 'FINALIZADO' || s === 'COMPLETADA' || s === 'TERMINADA') return 4;
-  if (s === 'EN_PROCESO' || s === 'EN CURSO' || s === 'PROCESO' || s === 'EN_EJECUCION') return 3;
-  if (s === 'COTIZADA') return 2;
-  if (s === 'ASIGNADA' || s === 'ASIGNADO') return 1;
+  const s = (rawStatus || requestObj?.statusRaw || requestObj?.estado_operativo || requestObj?.estado || requestObj?.status || '').toString().toUpperCase();
+  if (['CANCELADA', 'CANCELADO', 'ANULADA', 'RECHAZADA'].includes(s) || s.includes('CANCELAD') || s.includes('RECHAZAD') || s.includes('ANULAD')) return -1;
+  if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'PAGADA', 'PAGADO'].includes(s) || s.includes('FINALIZAD') || s.includes('TERMINAD') || s.includes('COMPLETAD')) return 4;
+  if (['EN_PROCESO', 'EN CURSO', 'PROCESO', 'EN_EJECUCION'].includes(s) || s.includes('PROCESO') || s.includes('CURSO') || s.includes('EJECUCION')) return 3;
+  if (['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO'].includes(s) || s.includes('COTIZAD') || s.includes('REVISION') || s.includes('REVICION') || s.includes('APROBAD')) return 2;
+
+  let hasPaymentsOrReview = requestObj?.hasInReviewPayment === true ||
+    (Array.isArray(requestObj?.payments) && requestObj.payments.length > 0) ||
+    parseFloat(requestObj?.total_pagado || requestObj?.monto_pagado || requestObj?.totalPagado || 0) > 0.01 ||
+    ['REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_VALIDACION', 'VERIFICANDO'].includes((requestObj?.estado_pago || requestObj?.estadoPago || requestObj?.cotizacion?.estado_pago || '').toString().toUpperCase()) ||
+    (requestObj?.quotation && (parseFloat(requestObj.quotation.total || requestObj.quotation.monto_total || 0) > 0 || (requestObj.quotation.status && requestObj.quotation.status !== 'BORRADOR')));
+
+  if (!hasPaymentsOrReview && requestObj && (requestObj.id || requestObj.idNumeric)) {
+    try {
+      const localPending = JSON.parse(localStorage.getItem(`sigesto_pending_payments_${requestObj.id}`) || localStorage.getItem(`sigesto_pending_payments_${requestObj.idNumeric}`) || '[]');
+      if (Array.isArray(localPending) && localPending.length > 0) {
+        hasPaymentsOrReview = true;
+      }
+    } catch (e) {}
+  }
+
+  if (hasPaymentsOrReview) return 2; // COTIZADA como mínimo porque ya existe cotización/abono
+
+  if (['ASIGNADA', 'ASIGNADO'].includes(s) || s.includes('ASIGNAD')) return 1;
   return 0; // PENDIENTE
+};
+
+const getVisualOperationalStageIndex = (requestObj, rawIndex, paymentsList = []) => {
+  if (!requestObj) return rawIndex;
+  let maxIndex = rawIndex;
+
+  const timeline = Array.isArray(requestObj.timeline) ? requestObj.timeline : (Array.isArray(requestObj.historial) ? requestObj.historial : []);
+  timeline.forEach(item => {
+    const s = (item.estado || item.status || item.titulo || item.title || item.descripcion || '').toString().toUpperCase();
+    if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'PAGADA', 'PAGADO'].some(k => s.includes(k))) {
+      if (maxIndex < 4) maxIndex = 4;
+    } else if (['EN_PROCESO', 'EN CURSO', 'PROCESO', 'EN_EJECUCION'].some(k => s.includes(k))) {
+      if (maxIndex < 3) maxIndex = 3;
+    } else if (['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO'].some(k => s.includes(k))) {
+      if (maxIndex < 2) maxIndex = 2;
+    } else if (['ASIGNADA', 'ASIGNADO'].some(k => s.includes(k))) {
+      if (maxIndex < 1) maxIndex = 1;
+    }
+  });
+
+  const allPays = Array.isArray(paymentsList) && paymentsList.length > 0 ? paymentsList : (Array.isArray(requestObj.payments) ? requestObj.payments : (Array.isArray(requestObj.pagos) ? requestObj.pagos : []));
+  const hasVerifiedPayment = allPays.some(p => ['VERIFICADO', 'APROBADO', 'COMPLETADO'].includes((p.estado || '').toString().toUpperCase()));
+  if (hasVerifiedPayment && maxIndex < 3) {
+    maxIndex = 3;
+  }
+
+  const reqId = requestObj.id || requestObj.idNumeric || requestObj.uuid_solicitud || 'unknown';
+  if (reqId && reqId !== 'unknown') {
+    const storageKey = `sigesto_visual_max_op_stage_${reqId}`;
+    try {
+      const storedMax = Number(localStorage.getItem(storageKey) || 0);
+      if (!isNaN(storedMax) && storedMax > maxIndex && storedMax <= 4) {
+        maxIndex = storedMax;
+      } else if (maxIndex > storedMax) {
+        localStorage.setItem(storageKey, String(maxIndex));
+      }
+    } catch (e) {}
+  }
+
+  return maxIndex;
 };
 
 const getOperationalBadge = (request) => {
   if (!request) return null;
-  const sRaw = (request?.statusRaw || request?.estado_operativo || request?.status || '').toString().toUpperCase();
-  const opIdx = getOperationalStageIndex(sRaw, request);
+  const sRaw = (request?.statusRaw || request?.estado_operativo || request?.estado || request?.status || '').toString().toUpperCase();
+  const opIdx = getVisualOperationalStageIndex(request, getOperationalStageIndex(sRaw, request));
 
-  if (opIdx === -1 || sRaw.includes('CANCELAD') || sRaw.includes('ANULAD') || sRaw.includes('RECHAZAD')) {
+  if (opIdx === -1 || ['CANCELADA', 'CANCELADO', 'ANULADA', 'RECHAZADA'].includes(sRaw)) {
     return (
       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-600 border border-rose-200 uppercase">
         Cancelado
       </span>
     );
   }
-  if (opIdx === 4 || sRaw.includes('FINALIZAD') || sRaw.includes('TERMINAD') || sRaw.includes('COMPLETAD')) {
+  if (opIdx === 4 || ['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'PAGADA', 'PAGADO'].includes(sRaw)) {
     return (
       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
         Finalizado
       </span>
     );
   }
-  if (opIdx === 3 || sRaw.includes('EN_PROCESO') || sRaw.includes('CURSO') || sRaw.includes('PROCESO') || sRaw.includes('EJECUCION')) {
+  if (opIdx === 3 || ['EN_PROCESO', 'EN CURSO', 'PROCESO', 'EN_EJECUCION'].includes(sRaw)) {
     return (
       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200 uppercase">
         En Proceso
       </span>
     );
   }
-  if (opIdx === 2 || sRaw.includes('COTIZAD')) {
+  if (opIdx === 2 || ['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO'].includes(sRaw)) {
     return (
       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 uppercase">
         Cotizado
       </span>
     );
   }
-  if (opIdx === 1 || sRaw.includes('ASIGNAD')) {
+  if (opIdx === 1 || ['ASIGNADA', 'ASIGNADO'].includes(sRaw)) {
     return (
       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase">
         Asignado
@@ -87,45 +145,54 @@ const getOperationalBadge = (request) => {
   );
 };
 
-const getFinancialBadge = (request) => {
+const getFinancialBadge = (request, propTotalAmount = null, propTotalPaid = null, propPayments = null) => {
   if (!request) return null;
-  let estadoPago = (request?.estado_pago || request?.estadoPago || 'PENDIENTE').toString().toUpperCase();
+  const estado = (request?.statusRaw || request?.estado_operativo || request?.estado || request?.status || '').toString().toUpperCase();
 
+  const totalAmount = propTotalAmount !== null ? propTotalAmount : parseFloat(request?.quotation?.total || request?.quotation?.monto_total || 0);
+
+  let allPayments = propPayments !== null ? [...propPayments] : (Array.isArray(request?.payments) ? [...request.payments] : []);
   try {
     const localPending = JSON.parse(localStorage.getItem(`sigesto_pending_payments_${request?.id}`) || localStorage.getItem(`sigesto_pending_payments_${request?.idNumeric}`) || '[]');
     if (Array.isArray(localPending) && localPending.length > 0) {
-      const allPayments = Array.isArray(request?.payments) ? request.payments : [];
       const existingIds = new Set(allPayments.map(p => String(p.id_pago || p.id)));
       const unverified = localPending.filter(lp => !existingIds.has(String(lp.id_pago || lp.id)));
-      if (unverified.length > 0 && estadoPago !== 'COMPLETADO') {
-        estadoPago = 'EN_REVISION';
-      }
+      allPayments = [...unverified, ...allPayments];
     }
   } catch (e) {}
 
-  if (estadoPago === 'COMPLETADO') {
+  const totalPaid = propTotalPaid !== null ? propTotalPaid : Math.max(
+    allPayments
+      .filter(p => !['RECHAZADO', 'CANCELADO'].includes((p.estado || '').toString().toUpperCase()))
+      .reduce((sum, p) => sum + parseFloat(p.monto_pagado || p.monto || 0), 0),
+    parseFloat(request?.total_pagado || request?.monto_pagado || request?.totalPagado || 0)
+  );
+
+  const hasInReviewPayment = allPayments.some(p => ['EN REVISION', 'EN_REVISION', 'REVISION', 'PENDIENTE_VALIDACION', 'PENDIENTE DE VALIDACION', 'VERIFICANDO'].includes((p.estado || '').toString().toUpperCase()));
+
+  if ((totalAmount > 0 && totalPaid >= totalAmount - 0.01) || estado === 'PAGADA' || (request?.estado_pago || '').toString().toUpperCase() === 'COMPLETADO') {
     return (
       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
-        Completado
+        Pagado / Liquidado
       </span>
     );
   }
 
-  if (estadoPago === 'EN_REVISION') {
+  if (estado === 'REVISION_PAGO' || hasInReviewPayment || (request?.estado_pago || '').toString().toUpperCase() === 'EN_REVISION') {
     return (
       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200 uppercase">
         <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mr-1.5 animate-pulse"></span>
-        En Revisión
+        Pago en Revisión
       </span>
     );
   }
 
-  if (estadoPago === 'ADELANTO') {
+  if (totalPaid > 0.01 || ['APROBADA', 'EN_PROCESO'].includes(estado) || (request?.estado_pago || '').toString().toUpperCase() === 'ADELANTO') {
     return (
       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 uppercase">
         <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5"></span>
-        Adelanto
+        Adelanto Confirmado
       </span>
     );
   }
@@ -133,7 +200,7 @@ const getFinancialBadge = (request) => {
   return (
     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200 uppercase">
       <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5"></span>
-      Pendiente de Pago
+      Por Cotizar / Pendiente de Pago
     </span>
   );
 };
@@ -156,18 +223,29 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
   const totalPaid = Math.max(propTotalPaid || 0, totalPaidFromPayments, parseFloat(request?.total_pagado || request?.monto_pagado || request?.totalPagado || 0));
   const remainingBalance = Math.max(0, totalAmount - totalPaid);
 
+  const inReviewList = allPayments.filter(p => 
+    ['EN REVISION', 'EN_REVISION', 'REVISION', 'PENDIENTE', 'PENDIENTE_VALIDACION', 'VERIFICANDO', 'PENDIENTE DE VALIDACION', 'REVISION_PAGO', 'REVICION_PAGO'].includes((p.estado || '').toString().toUpperCase())
+  );
+
+  if (inReviewList.length === 0 && (['REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION'].includes((request?.statusRaw || request?.estado_pago || request?.estadoPago || '').toString().toUpperCase()))) {
+    const fallbackMonto = totalPaid <= 0.01 && totalAmount > 0 ? totalAmount * 0.30 : remainingBalance > 0 ? remainingBalance : totalAmount;
+    inReviewList.push({
+      id_pago: 'in-review-server',
+      concepto: totalPaid <= 0.01 ? 'Adelanto del Servicio' : 'Liquidación del Saldo',
+      monto_pagado: fallbackMonto,
+      metodo_pago: 'Comprobante registrado',
+      estado: 'EN REVISION'
+    });
+  }
+
   const getFinancialStatusInfo = () => {
+    const estado = (request?.statusRaw || request?.estado_operativo || request?.estado || request?.status || '').toString().toUpperCase();
     let estadoPago = (request?.estado_pago || request?.estadoPago || 'PENDIENTE').toString().toUpperCase();
 
-    const hasLocalPending = allPayments.some(p => ['PENDIENTE', 'EN_REVISION', 'REVISION', 'PENDIENTE_VALIDACION', 'VERIFICANDO', 'PENDIENTE DE VALIDACION', 'EN REVISION'].includes((p.estado || '').toString().toUpperCase()));
-    if (hasLocalPending && estadoPago !== 'COMPLETADO') {
-      estadoPago = 'EN_REVISION';
-    }
-
-    if (estadoPago === 'COMPLETADO') {
+    if ((totalAmount > 0 && totalPaid >= totalAmount - 0.01) || estado === 'PAGADA' || estadoPago === 'COMPLETADO') {
       return {
-        key: 'COMPLETADO',
-        label: 'Completado (Liquidado)',
+        key: 'PAGADO',
+        label: 'Pagado / Liquidado',
         badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
         dotClass: 'bg-emerald-500',
         cardBorder: 'border-emerald-200/80',
@@ -176,7 +254,19 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
       };
     }
 
-    if (estadoPago === 'EN_REVISION') {
+    if (totalPaid > 0.01 || ['APROBADA', 'EN_PROCESO'].includes(estado) || estadoPago === 'ADELANTO') {
+      return {
+        key: 'ADELANTO',
+        label: 'Adelanto Confirmado',
+        badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
+        dotClass: 'bg-amber-500',
+        cardBorder: 'border-amber-200/80',
+        iconBg: 'bg-amber-50 text-amber-600 border-amber-100',
+        description: 'Adelanto registrado. Saldo pendiente al finalizar la asistencia.'
+      };
+    }
+
+    if (inReviewList.length > 0 && totalAmount <= 0) {
       return {
         key: 'EN_REVISION',
         label: 'Pago en Revisión',
@@ -188,26 +278,14 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
       };
     }
 
-    if (estadoPago === 'ADELANTO') {
-      return {
-        key: 'ADELANTO',
-        label: 'Adelanto confirmado',
-        badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
-        dotClass: 'bg-amber-500',
-        cardBorder: 'border-amber-200/80',
-        iconBg: 'bg-amber-50 text-amber-600 border-amber-100',
-        description: 'Adelanto registrado. Saldo pendiente al finalizar la asistencia.'
-      };
-    }
-
     return {
       key: 'PENDIENTE',
-      label: 'Pendiente de pago',
+      label: totalAmount > 0 ? 'Pendiente de Pago' : 'Por Cotizar / Pendiente de Pago',
       badgeClass: 'bg-slate-100 text-slate-700 border-slate-200',
       dotClass: 'bg-slate-400',
       cardBorder: 'border-slate-200/70',
       iconBg: 'bg-slate-100 text-slate-600 border-slate-200',
-      description: 'En espera de confirmación de pago para proceder con el servicio o abono.'
+      description: 'En espera de confirmación o registro de pago.'
     };
   };
 
@@ -232,12 +310,28 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
         </div>
 
         <div className="mb-5">
-          <span className={`inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-extrabold border ${statusInfo.badgeClass}`}>
-            <span className={`w-2 h-2 rounded-full mr-2 shrink-0 ${statusInfo.dotClass}`}></span>
-            {statusInfo.label}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-extrabold border ${statusInfo.badgeClass}`}>
+              <span className={`w-2 h-2 rounded-full mr-2 shrink-0 ${statusInfo.dotClass}`}></span>
+              {statusInfo.label}
+            </span>
+
+            {/* Mensaje secundario con detalle del pago exacto en revisión */}
+            {inReviewList.map((p, idx) => {
+              const montoPago = parseFloat(p.monto_pagado || p.monto || 0);
+              const conceptoPago = p.concepto || (totalAmount > 0 && montoPago >= totalAmount * 0.99 ? 'Liquidación Total (100%)' : totalPaid > 0 ? 'Pago de Saldo' : 'Adelanto del Servicio');
+              return (
+                <span key={idx} className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-sky-50 text-sky-700 border border-sky-200 shadow-sm animate-pulse">
+                  <Clock className="w-3.5 h-3.5 mr-1.5 text-sky-600 shrink-0" />
+                  En Revisión ({conceptoPago}): S/ {montoPago.toFixed(2)}
+                </span>
+              );
+            })}
+          </div>
           <p className="text-xs text-slate-500 mt-2.5 leading-relaxed">
-            {statusInfo.description}
+            {inReviewList.length > 0 && statusInfo.key !== 'PAGADO'
+              ? `Su comprobante por S/ ${inReviewList.reduce((acc, p) => acc + parseFloat(p.monto_pagado || p.monto || 0), 0).toFixed(2)} (${inReviewList.map(p => p.concepto || (parseFloat(p.monto_pagado || p.monto || 0) >= totalAmount * 0.99 ? 'Liquidación Total' : totalPaid > 0 ? 'Pago de Saldo' : 'Adelanto')).join(', ')}) se encuentra actualmente en verificación por administración.`
+              : statusInfo.description}
           </p>
         </div>
       </div>
@@ -280,11 +374,11 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
             </div>
 
             <div className="grid grid-cols-1 gap-2 pt-1">
-              {totalPaid >= totalAmount - 0.01 ? (
-                /* Escenario C: Pago Total 100% */
+              {totalPaid >= totalAmount - 0.01 && totalAmount > 0 ? (
+                /* ESCENARIO A: Pago Total (100%) */
                 <div className="p-3 rounded-xl border border-slate-200/60 bg-slate-50 flex justify-between items-center text-xs shadow-soft-sm">
                   <div>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Pago Total</p>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Pago Total (100%)</p>
                     <p className="font-black text-slate-800 mt-0.5">S/ {totalAmount.toFixed(2)}</p>
                   </div>
                   <div>
@@ -299,8 +393,8 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
                     )}
                   </div>
                 </div>
-              ) : totalPaid > (totalAmount * 0.30) + 0.01 ? (
-                /* Escenario A: Adelanto realizado mayor al 30% y menor al 100% */
+              ) : totalPaid > 0.01 ? (
+                /* ESCENARIO B: Adelanto realizado (parcial) y Faltante */
                 <>
                   <div className="p-3 rounded-xl border border-slate-200/60 bg-slate-50 flex justify-between items-center text-xs shadow-soft-sm">
                     <div>
@@ -321,7 +415,7 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
                   </div>
                   <div className="p-3 rounded-xl border border-slate-200/60 bg-slate-50 flex justify-between items-center text-xs shadow-soft-sm">
                     <div>
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Saldo Restante</p>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Saldo Restante (Faltante)</p>
                       <p className="font-black text-slate-800 mt-0.5">S/ {remainingBalance.toFixed(2)}</p>
                     </div>
                     <div>
@@ -332,33 +426,17 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
                   </div>
                 </>
               ) : (
-                /* Escenario B: Adelanto mínimo estricto (30%) o menos */
+                /* ESCENARIO C: Cero pagos (Adelanto Mínimo Sugerido y Saldo Restante) */
                 <>
                   <div className="p-3 rounded-xl border border-slate-200/60 bg-slate-50 flex justify-between items-center text-xs shadow-soft-sm">
                     <div>
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Adelanto Mínimo (30%)</p>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Adelanto Mínimo Sugerido (30%)</p>
                       <p className="font-black text-slate-800 mt-0.5">S/ {(totalAmount * 0.30).toFixed(2)}</p>
                     </div>
                     <div>
-                      {totalPaid >= (totalAmount * 0.30) - 0.01 ? (
-                        statusInfo.key === 'EN_REVISION' ? (
-                          <span className="bg-sky-50 text-sky-700 text-[9px] font-extrabold px-2 py-0.5 rounded border border-sky-200 uppercase flex items-center">
-                            <Clock className="w-3 h-3 mr-1" /> En Revisión
-                          </span>
-                        ) : (
-                          <span className="bg-emerald-50 text-emerald-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-emerald-100 uppercase flex items-center">
-                            <CheckCircle2 className="w-3 h-3 mr-1" /> Abonado
-                          </span>
-                        )
-                      ) : totalPaid > 0 ? (
-                        <span className="bg-indigo-50 text-indigo-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-indigo-100 uppercase flex items-center">
-                          <Clock className="w-3 h-3 mr-1" /> Parcial
-                        </span>
-                      ) : (
-                        <span className="bg-amber-50 text-amber-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-amber-100 uppercase flex items-center">
-                          <Clock className="w-3 h-3 mr-1" /> Pendiente
-                        </span>
-                      )}
+                      <span className="bg-amber-50 text-amber-600 text-[9px] font-extrabold px-2 py-0.5 rounded border border-amber-100 uppercase flex items-center">
+                        <Clock className="w-3 h-3 mr-1" /> Pendiente
+                      </span>
                     </div>
                   </div>
                   <div className="p-3 rounded-xl border border-slate-200/60 bg-slate-50 flex justify-between items-center text-xs shadow-soft-sm">
@@ -685,6 +763,7 @@ const RequestTracking = () => {
   const [submittingPayment, setSubmittingPayment] = useState(false);
   const [bankAccount, setBankAccount] = useState(null);
   const [copiedField, setCopiedField] = useState('');
+  const fileInputRef = React.useRef(null);
 
   const copyToClipboard = (text, fieldName) => {
     navigator.clipboard.writeText(text);
@@ -698,7 +777,7 @@ const RequestTracking = () => {
       const data = await api.requests.getById(id);
       setRequest(data);
 
-      if (data.statusRaw === 'COTIZADA') {
+      if (getOperationalStageIndex(data.statusRaw, data) >= 2 || ['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'APROBADA', 'APROBADO', 'EN_PROCESO'].includes((data.statusRaw || '').toString().toUpperCase())) {
         try {
           const bankData = await api.finances.getBankAccount();
           setBankAccount(bankData);
@@ -801,9 +880,17 @@ const RequestTracking = () => {
     }
   };
 
+  const hasInReviewPayment = payments.some(p => 
+    ['EN REVISION', 'EN_REVISION', 'REVISION', 'PENDIENTE_VALIDACION', 'PENDIENTE DE VALIDACION', 'VERIFICANDO'].includes((p.estado || '').toString().toUpperCase())
+  ) || ['REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION'].includes((request?.statusRaw || request?.estado_operativo || request?.estado_pago || request?.estadoPago || '').toString().toUpperCase());
+
   // Registrar Pago (30% mínimo hasta 100% Liquidación, con comprobante opcional/Cloudinary)
   const handleSubmitPayment = async (e) => {
     e.preventDefault();
+    if (hasInReviewPayment) {
+      setAlertModal({ message: 'No puede registrar un nuevo abono o pago mientras exista un comprobante en proceso de verificación por parte de administración. Por favor, espere a que sea validado para continuar.' });
+      return;
+    }
     if (!paymentAmount || isNaN(paymentAmount) || Number(paymentAmount) <= 0) {
       setAlertModal({ message: 'Por favor, ingrese un monto válido.' });
       return;
@@ -814,8 +901,12 @@ const RequestTracking = () => {
       setAlertModal({ message: `El primer pago (adelanto) debe ser como mínimo el 30% del total (S/ ${minAdvance.toFixed(2)}). Puede abonar desde el 30% hasta el 100% para liquidación total.` });
       return;
     }
+    if (totalPaid <= 0.01 && totalAmount > 0 && Number(paymentAmount) > totalAmount + 0.01) {
+      setAlertModal({ message: `El monto a abonar no puede superar el 100% del total (S/ ${totalAmount.toFixed(2)}).` });
+      return;
+    }
     if (totalPaid > 0.01 && Math.abs(Number(paymentAmount) - remainingBalance) > 0.05) {
-      setAlertModal({ message: `Solo se permite el pago del monto restante completo (S/ ${remainingBalance.toFixed(2)}). No se admiten abonos en partes tras un adelanto previo.` });
+      setAlertModal({ message: `Solo se permite el pago exacto del saldo restante completo (S/ ${remainingBalance.toFixed(2)}). No se permiten abonos fraccionados después del primer pago.` });
       return;
     }
     if (!paymentOperation || !paymentOperation.trim()) {
@@ -867,6 +958,9 @@ const RequestTracking = () => {
       setPaymentAmount('');
       setPaymentOperation('');
       setPaymentFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     } catch (err) {
       setAlertModal({ message: err.message || 'Error al registrar el pago.' });
     } finally {
@@ -882,20 +976,23 @@ const RequestTracking = () => {
 
   const totalAmount = request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0;
   const totalPaid = payments
-    .filter(p => p.estado !== 'RECHAZADO' && p.estado !== 'CANCELADO' && p.estado !== 'Rechazado' && p.estado !== 'Cancelado')
+    .filter(p => !['RECHAZADO', 'CANCELADO'].includes((p.estado || '').toString().toUpperCase()))
     .reduce((sum, p) => sum + parseFloat(p.monto_pagado || p.monto || 0), 0);
   const remainingBalance = Math.max(0, totalAmount - totalPaid);
 
   const epMain = (request?.estado_pago || request?.estadoPago || request?.quotation?.estado_pago || '').toString().toUpperCase();
   const qsMain = (request?.quotation?.status || request?.quotation?.estado || '').toString().toUpperCase();
 
-  const currentOperationalIndex = request ? getOperationalStageIndex(request.statusRaw || request.status, request) : 0;
+  const reqWithPayments = request ? { ...request, payments, hasInReviewPayment } : null;
+  const currentOperationalIndex = reqWithPayments ? getOperationalStageIndex(reqWithPayments.statusRaw || reqWithPayments.status, reqWithPayments) : 0;
 
   useEffect(() => {
     if (totalPaid > 0.01 && remainingBalance > 0) {
       setPaymentAmount(remainingBalance.toFixed(2));
+    } else if (totalPaid <= 0.01 && totalAmount > 0 && !paymentAmount) {
+      setPaymentAmount((totalAmount * 0.30).toFixed(2));
     }
-  }, [totalPaid, remainingBalance]);
+  }, [totalPaid, remainingBalance, totalAmount]);
 
   const estadoPagoMain = (request?.estado_pago || request?.estadoPago || request?.quotation?.estado_pago || '').toString().toUpperCase();
   const tipoPagoMain = (request?.tipo_pago || request?.tipoPago || request?.quotation?.tipo_pago || '').toString().toUpperCase();
@@ -1039,8 +1136,8 @@ const RequestTracking = () => {
             <div className="flex flex-wrap items-center gap-2 mt-1">
               <span className="text-xs text-slate-400 font-medium">Tipo: {request.type}</span>
               <span className="text-slate-300 hidden sm:inline">•</span>
-              {getOperationalBadge(request)}
-              {getFinancialBadge(request)}
+              {getOperationalBadge(reqWithPayments || request)}
+              {getFinancialBadge(request, totalAmount, totalPaid, payments)}
             </div>
           </div>
         </div>
@@ -1070,7 +1167,7 @@ const RequestTracking = () => {
       )}
 
       {/* BANNER DE AGRADECIMIENTO Y FINALIZACIÓN TOTAL */}
-      {currentOperationalIndex === 4 && isFullyPaid && !isCancelled && (
+      {getVisualOperationalStageIndex(request, currentOperationalIndex, payments) === 4 && isFullyPaid && !isCancelled && (
         <>
           <GooglePicaPica trigger={confettiTrigger} />
           <div className="relative overflow-hidden rounded-2xl bg-white p-4 md:p-5 mb-8 border border-slate-200/80 shadow-soft hover:shadow-md transition-all duration-300 animate-slide-up group">
@@ -1082,18 +1179,16 @@ const RequestTracking = () => {
             <div className="relative z-10 flex flex-col sm:flex-row items-center justify-between gap-4 md:gap-6">
               {/* Contenido izquierdo + centro sintetizado */}
               <div className="flex items-center space-x-3.5 md:space-x-4 text-center sm:text-left min-w-0 flex-1">
-                <button
-                  onClick={() => setConfettiTrigger(prev => prev + 1)}
-                  title="¡Haz clic para lanzar más Pica Pica!"
-                  className="p-3 bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 rounded-2xl text-white shadow-md shadow-amber-500/20 shrink-0 flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 transition-all duration-300 group/trophy relative"
+                <div
+                  className="p-3 bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 rounded-2xl text-white shadow-md shadow-amber-500/20 shrink-0 flex items-center justify-center relative"
                 >
-                  <Trophy className="w-6 h-6 text-white drop-shadow-sm group-hover/trophy:rotate-12 transition-transform duration-300" />
+                  <Trophy className="w-6 h-6 text-white drop-shadow-sm" />
                   <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 border border-white"></span>
                   </span>
                   <Sparkles className="absolute -top-2 -left-1.5 w-4 h-4 text-amber-300 animate-bounce pointer-events-none" />
-                </button>
+                </div>
 
                 <div className="space-y-1 min-w-0 flex-1">
                   <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
@@ -1110,18 +1205,6 @@ const RequestTracking = () => {
                   </p>
                 </div>
               </div>
-
-              {/* Botón de celebración (Dispara Pica Pica estilo Google) */}
-              <div className="shrink-0 flex items-center justify-center gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 w-full sm:w-auto">
-                <button
-                  onClick={() => setConfettiTrigger(prev => prev + 1)}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 text-white shadow-sm hover:shadow-md hover:scale-105 active:scale-95 transition-all duration-300 cursor-pointer group/btn w-full sm:w-auto"
-                  title="Celebrar de nuevo con Pica Pica"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-spin group-hover/btn:animate-ping duration-1000" />
-                  <span>¡Celebrar!</span>
-                </button>
-              </div>
             </div>
           </div>
         </>
@@ -1134,7 +1217,7 @@ const RequestTracking = () => {
         <div className="lg:col-span-8 space-y-6 lg:space-y-8">
           {/* 1. Flujo Operativo */}
           {!isCancelled && (
-            <OperationalStepper request={request} currentOperationalIndex={currentOperationalIndex} />
+            <OperationalStepper request={request} currentOperationalIndex={getVisualOperationalStageIndex(request, currentOperationalIndex, payments)} />
           )}
           <div className="bg-white border border-slate-200/60 rounded-3xl p-6 shadow-soft space-y-4">
             <h3 className="font-display font-bold text-sm text-slate-800">Descripción del Reporte</h3>
@@ -1161,7 +1244,7 @@ const RequestTracking = () => {
           </div>
 
           {/* COTIZACIÓN */}
-          {request.quotation && (currentOperationalIndex >= 2 || (request.quotation.status !== 'BORRADOR' && totalAmount > 0.01)) && (
+          {request.quotation && (getVisualOperationalStageIndex(request, currentOperationalIndex, payments) >= 2 || (request.quotation.status !== 'BORRADOR' && totalAmount > 0.01)) && (
             <div className="bg-white border-2 border-slate-200/80 rounded-3xl p-6 md:p-8 shadow-soft space-y-6 relative overflow-hidden animate-slide-up">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
                 <div className="flex items-center space-x-3.5">
@@ -1271,7 +1354,7 @@ const RequestTracking = () => {
               {request.quotation && !isFullyPaid && totalAmount > 0.01 && (
                 (request.statusRaw === 'COTIZADA' && isQuotationAccepted) ||
                 totalPaid > 0.01 ||
-                ['APROBADA', 'REVISION_PAGO', 'EN_PROCESO', 'EN CURSO'].includes((request.statusRaw || request.status || '').toString().toUpperCase())
+                ['APROBADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'EN_PROCESO', 'EN CURSO'].includes((request.statusRaw || request.status || '').toString().toUpperCase())
               ) && (
                 <div className="pt-5 border-t border-slate-150 animate-slide-up space-y-5">
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -1384,221 +1467,215 @@ const RequestTracking = () => {
                     )}
 
                     <div className="lg:col-span-7 bg-white border border-slate-200/80 rounded-2xl p-5 md:p-6 shadow-soft-sm flex flex-col justify-between">
-                      <form onSubmit={handleSubmitPayment} className="space-y-5">
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                              1. Seleccionar o Ingresar Monto (S/)
-                            </label>
-                            <span className="text-[10px] font-bold text-indigo-600">
-                              ⚡ Carga Rápida
-                            </span>
+                      {hasInReviewPayment ? (
+                        <div className="flex flex-col items-center justify-center text-center p-8 my-auto space-y-4 animate-fade-in">
+                          <div className="w-16 h-16 bg-sky-50 text-sky-600 rounded-2xl border border-sky-100 flex items-center justify-center shadow-soft-sm">
+                            <Clock className="w-8 h-8 animate-pulse" />
                           </div>
-
-                          {totalPaid > 0.01 ? (
-                            <div className="mb-4 bg-amber-50/90 border border-amber-200/80 rounded-xl p-3.5 flex items-center justify-between gap-3 shadow-2xs">
-                              <div className="flex items-center gap-2.5">
-                                <div className="p-2 bg-amber-500/15 text-amber-700 rounded-lg shrink-0">
-                                  <DollarSign className="w-4 h-4" />
-                                </div>
-                                <div>
-                                  <h6 className="text-xs font-black text-amber-950">Liquidación de Saldo Faltante</h6>
-                                  <p className="text-[11px] text-amber-700 font-medium">No se admiten abonos en partes. Pago único del 100% restante.</p>
-                                </div>
-                              </div>
-                              <span className="text-xs font-black text-amber-900 bg-amber-200/70 px-3 py-1.5 rounded-lg border border-amber-300/60 shrink-0">
-                                S/ {remainingBalance.toFixed(2)}
+                          <div className="space-y-2 max-w-md">
+                            <h5 className="font-display font-extrabold text-slate-800 text-sm md:text-base">
+                              Comprobante en Proceso de Verificación
+                            </h5>
+                            <p className="text-xs text-slate-500 leading-relaxed">
+                              Hemos recibido el registro de su abono y se encuentra actualmente en revisión por nuestro departamento de finanzas.
+                            </p>
+                            <div className="bg-sky-50/70 border border-sky-200/80 rounded-xl p-3.5 text-[11px] font-bold text-sky-900 mt-4 leading-normal shadow-2xs flex items-center gap-2 text-left">
+                              <AlertTriangle className="w-5 h-5 text-sky-600 shrink-0" />
+                              <span>Por seguridad, no es posible registrar pagos o abonos adicionales hasta que se verifique y apruebe el comprobante anterior.</span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <form onSubmit={handleSubmitPayment} className="space-y-5">
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                                1. Seleccionar o Ingresar Monto (S/)
+                              </label>
+                              <span className="text-[10px] font-bold text-indigo-600">
+                                ⚡ Carga Rápida
                               </span>
                             </div>
-                          ) : (
-                            <div className="grid grid-cols-3 gap-2 mb-3">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const total = parseFloat(request?.quotation?.total || totalAmount || 0);
-                                  setPaymentAmount((total * 0.30).toFixed(2));
-                                }}
-                                className={`px-3 py-2 rounded-xl text-xs font-bold border transition-soft cursor-pointer flex flex-col items-center justify-center ${
-                                  Math.abs(parseFloat(paymentAmount || 0) - parseFloat(request?.quotation?.total || totalAmount || 0) * 0.30) < 0.05
-                                    ? 'bg-indigo-600 text-white border-indigo-700 shadow-soft-sm'
-                                    : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-200 hover:border-indigo-200'
-                                }`}
-                              >
-                                <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-80">30% (Mínimo)</span>
-                                <span className="text-xs mt-0.5">S/ {(parseFloat(request?.quotation?.total || totalAmount || 0) * 0.30).toFixed(2)}</span>
-                              </button>
 
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const total = parseFloat(request?.quotation?.total || totalAmount || 0);
-                                  setPaymentAmount((total * 0.50).toFixed(2));
-                                }}
-                                className={`px-3 py-2 rounded-xl text-xs font-bold border transition-soft cursor-pointer flex flex-col items-center justify-center ${
-                                  Math.abs(parseFloat(paymentAmount || 0) - parseFloat(request?.quotation?.total || totalAmount || 0) * 0.50) < 0.05
-                                    ? 'bg-indigo-600 text-white border-indigo-700 shadow-soft-sm'
-                                    : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-200 hover:border-indigo-200'
-                                }`}
-                              >
-                                <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-80">50% (Mitad)</span>
-                                <span className="text-xs mt-0.5">S/ {(parseFloat(request?.quotation?.total || totalAmount || 0) * 0.50).toFixed(2)}</span>
-                              </button>
+                            {totalPaid > 0.01 ? (
+                              <div className="mb-4 bg-amber-50/90 border border-amber-200/80 rounded-xl p-3.5 flex items-center justify-between gap-3 shadow-2xs">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="p-2 bg-amber-500/15 text-amber-700 rounded-lg shrink-0">
+                                    <DollarSign className="w-4 h-4" />
+                                  </div>
+                                  <div>
+                                    <h6 className="text-xs font-black text-amber-950">Liquidación de Saldo Faltante</h6>
+                                    <p className="text-[11px] text-amber-700 font-medium">No se admiten abonos en partes. Pago único del 100% restante.</p>
+                                  </div>
+                                </div>
+                                <span className="text-xs font-black text-amber-900 bg-amber-200/70 px-3 py-1.5 rounded-lg border border-amber-300/60 shrink-0">
+                                  S/ {remainingBalance.toFixed(2)}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-3 gap-2 mb-3">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const total = parseFloat(request?.quotation?.total || totalAmount || 0);
+                                    setPaymentAmount((total * 0.30).toFixed(2));
+                                  }}
+                                  className={`px-3 py-2 rounded-xl text-xs font-bold border transition-soft cursor-pointer flex flex-col items-center justify-center ${
+                                    Math.abs(parseFloat(paymentAmount || 0) - parseFloat(request?.quotation?.total || totalAmount || 0) * 0.30) < 0.05
+                                      ? 'bg-indigo-600 text-white border-indigo-700 shadow-soft-sm'
+                                      : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-200 hover:border-indigo-200'
+                                  }`}
+                                >
+                                  <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-80">30% (Mínimo)</span>
+                                  <span className="text-xs mt-0.5">S/ {(parseFloat(request?.quotation?.total || totalAmount || 0) * 0.30).toFixed(2)}</span>
+                                </button>
 
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const total = parseFloat(request?.quotation?.total || totalAmount || 0);
-                                  setPaymentAmount(total.toFixed(2));
-                                }}
-                                className={`px-3 py-2 rounded-xl text-xs font-bold border transition-soft cursor-pointer flex flex-col items-center justify-center ${
-                                  Math.abs(parseFloat(paymentAmount || 0) - parseFloat(request?.quotation?.total || totalAmount || 0)) < 0.05
-                                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-soft-sm'
-                                    : 'bg-slate-50 hover:bg-emerald-50 text-slate-700 border-slate-200 hover:border-emerald-200'
-                                }`}
-                              >
-                                <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-80">100% (Total)</span>
-                                <span className="text-xs mt-0.5">S/ {parseFloat(request?.quotation?.total || totalAmount || 0).toFixed(2)}</span>
-                              </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const total = parseFloat(request?.quotation?.total || totalAmount || 0);
+                                    setPaymentAmount((total * 0.50).toFixed(2));
+                                  }}
+                                  className={`px-3 py-2 rounded-xl text-xs font-bold border transition-soft cursor-pointer flex flex-col items-center justify-center ${
+                                    Math.abs(parseFloat(paymentAmount || 0) - parseFloat(request?.quotation?.total || totalAmount || 0) * 0.50) < 0.05
+                                      ? 'bg-indigo-600 text-white border-indigo-700 shadow-soft-sm'
+                                      : 'bg-slate-50 hover:bg-indigo-50 text-slate-700 border-slate-200 hover:border-indigo-200'
+                                  }`}
+                                >
+                                  <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-80">50% (Mitad)</span>
+                                  <span className="text-xs mt-0.5">S/ {(parseFloat(request?.quotation?.total || totalAmount || 0) * 0.50).toFixed(2)}</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const total = parseFloat(request?.quotation?.total || totalAmount || 0);
+                                    setPaymentAmount(total.toFixed(2));
+                                  }}
+                                  className={`px-3 py-2 rounded-xl text-xs font-bold border transition-soft cursor-pointer flex flex-col items-center justify-center ${
+                                    Math.abs(parseFloat(paymentAmount || 0) - parseFloat(request?.quotation?.total || totalAmount || 0)) < 0.05
+                                      ? 'bg-emerald-600 text-white border-emerald-700 shadow-soft-sm'
+                                      : 'bg-slate-50 hover:bg-emerald-50 text-slate-700 border-slate-200 hover:border-emerald-200'
+                                  }`}
+                                >
+                                  <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-80">100% (Total)</span>
+                                  <span className="text-xs mt-0.5">S/ {parseFloat(request?.quotation?.total || totalAmount || 0).toFixed(2)}</span>
+                                </button>
+                              </div>
+                            )}
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <div className="relative rounded-xl shadow-soft-sm">
+                                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                                    <DollarSign className="w-4 h-4 text-slate-400" />
+                                  </div>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min={totalPaid <= 0.01 ? ((request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0) * 0.30).toFixed(2) : remainingBalance.toFixed(2)}
+                                    max={remainingBalance.toFixed(2)}
+                                    required
+                                    readOnly={totalPaid > 0.01}
+                                    value={paymentAmount}
+                                    onChange={(e) => setPaymentAmount(e.target.value)}
+                                    className="w-full pl-9 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-extrabold text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-soft read-only:bg-slate-100 read-only:text-slate-500 read-only:cursor-not-allowed"
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="relative rounded-xl shadow-soft-sm">
+                                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                                    <CreditCard className="w-4 h-4 text-slate-400" />
+                                  </div>
+                                  <select
+                                    value={paymentMethod}
+                                    onChange={(e) => setPaymentMethod(e.target.value)}
+                                    className="w-full pl-9 pr-8 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-soft appearance-none cursor-pointer"
+                                  >
+                                    <option value="TRANSFERENCIA">Transferencia Bancaria</option>
+                                  </select>
+                                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                          )}
 
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div>
+                            <div className="space-y-1.5">
+                              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                                2. Número de Operación (* Obligatorio)
+                              </label>
                               <div className="relative rounded-xl shadow-soft-sm">
                                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                                  <DollarSign className="w-4 h-4 text-slate-400" />
+                                  <Hash className="w-4 h-4 text-slate-400" />
                                 </div>
                                 <input
-                                  type="number"
-                                  step="0.01"
-                                  min={totalPaid <= 0.01 ? ((request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0) * 0.30).toFixed(2) : remainingBalance.toFixed(2)}
-                                  max={remainingBalance.toFixed(2)}
+                                  type="text"
                                   required
-                                  readOnly={totalPaid > 0.01}
-                                  value={paymentAmount}
-                                  onChange={(e) => setPaymentAmount(e.target.value)}
-                                  onBlur={(e) => {
-                                    const val = parseFloat(e.target.value);
-                                    if (totalPaid > 0.01) {
-                                      setPaymentAmount(remainingBalance.toFixed(2));
-                                    } else {
-                                      const minVal = (request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0) * 0.30;
-                                      if (!isNaN(val) && val < minVal && e.target.value !== '') {
-                                        setPaymentAmount(minVal.toFixed(2));
-                                      } else if (!isNaN(val) && val > remainingBalance) {
-                                        setPaymentAmount(remainingBalance.toFixed(2));
-                                      }
-                                    }
-                                  }}
-                                  className={`w-full pl-9 pr-4 py-3 border rounded-xl text-xs font-bold transition-soft ${
-                                    totalPaid > 0.01
-                                      ? 'bg-slate-100 border-slate-300 text-slate-700 cursor-not-allowed focus:outline-none'
-                                      : totalPaid <= 0.01 && paymentAmount !== '' && Number(paymentAmount) < ((request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0) * 0.30 - 0.01)
-                                      ? 'bg-white border-rose-400 focus:border-rose-500 focus:ring-rose-500/10 text-rose-600 focus:outline-none focus:ring-4'
-                                      : 'bg-white border-slate-200 focus:border-indigo-500 focus:ring-indigo-500/10 text-slate-800 focus:outline-none focus:ring-4'
-                                  }`}
-                                  placeholder={totalPaid > 0.01 ? `S/ ${remainingBalance.toFixed(2)}` : `Mín. S/ ${((request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0) * 0.30).toFixed(2)}`}
+                                  value={paymentOperation}
+                                  onChange={(e) => setPaymentOperation(e.target.value)}
+                                  className="w-full pl-9 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-soft"
+                                  placeholder="Ej: 351-98765432"
                                 />
                               </div>
-                              {totalPaid <= 0.01 && paymentAmount !== '' && Number(paymentAmount) < ((request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0) * 0.30 - 0.01) && (
-                                <p className="text-[11px] text-rose-600 font-bold mt-1.5 flex items-center gap-1 animate-pulse">
-                                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Mínimo permitido: 30% (S/ {((request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0) * 0.30).toFixed(2)})
-                                </p>
-                              )}
-                              {totalPaid <= 0.01 && Number(paymentAmount) > remainingBalance + 0.01 && (
-                                <p className="text-[11px] text-rose-600 font-bold mt-1.5 flex items-center gap-1 animate-pulse">
-                                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Excede el saldo (S/ {remainingBalance.toFixed(2)})
-                                </p>
-                              )}
                             </div>
 
-                            <div className="relative">
-                              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                                <CreditCard className="w-4 h-4 text-slate-400" />
+                            <div className="space-y-1.5">
+                              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                                3. Adjuntar Comprobante de Pago (* Obligatorio)
+                              </label>
+                              <div className="relative rounded-xl border border-dashed border-slate-300 p-3 bg-slate-50/80 hover:bg-slate-100/80 transition-soft">
+                                <input
+                                  ref={fileInputRef}
+                                  type="file"
+                                  required={!paymentFile}
+                                  accept="image/*,.pdf"
+                                  onChange={(e) => setPaymentFile(e.target.files?.[0] || null)}
+                                  className="w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border border-slate-200 file:text-xs file:font-bold file:bg-white file:text-slate-700 hover:file:bg-slate-100 cursor-pointer"
+                                />
+                                {paymentFile && (
+                                  <p className="text-[11px] text-emerald-600 font-bold mt-1.5 flex items-center gap-1">
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> {paymentFile.name}
+                                  </p>
+                                )}
                               </div>
-                              <select
-                                value={paymentMethod}
-                                onChange={(e) => setPaymentMethod(e.target.value)}
-                                className="w-full pl-9 pr-8 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-soft appearance-none cursor-pointer"
+                            </div>
+
+                            <div className="flex gap-3 pt-2 border-t border-slate-100">
+                              {totalPaid <= 0.01 && request.statusRaw === 'COTIZADA' && (
+                                <button
+                                  type="button"
+                                  onClick={() => setIsQuotationAccepted(false)}
+                                  disabled={submittingPayment}
+                                  className="flex-1 py-3.5 bg-white hover:bg-slate-50 text-slate-600 font-bold text-xs rounded-xl transition-soft cursor-pointer border border-slate-200 hover:border-slate-300 disabled:opacity-50 flex items-center justify-center space-x-1.5 shadow-2xs"
+                                >
+                                  <span>Volver</span>
+                                </button>
+                              )}
+                              <button
+                                type="submit"
+                                disabled={submittingPayment || !paymentAmount || !paymentOperation.trim() || !paymentFile || (totalPaid <= 0.01 && Number(paymentAmount) < (request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0) * 0.30 - 0.01)}
+                                className="flex-[2] py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition-soft cursor-pointer disabled:opacity-50 flex justify-center items-center space-x-2 shadow-soft border border-emerald-700 hover-lift"
                               >
-                                <option value="TRANSFERENCIA">Transferencia Bancaria</option>
-                              </select>
-                              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
-                                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                              </div>
+                                {submittingPayment ? (
+                                  <>
+                                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    <span>Registrando...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span>{totalPaid > 0.01 ? 'Registrar Abono Restante' : 'Registrar y Notificar Pago'}</span>
+                                    <ArrowRight className="w-4 h-4" />
+                                  </>
+                                )}
+                              </button>
                             </div>
                           </div>
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                            2. Número de Operación (* Obligatorio)
-                          </label>
-                          <div className="relative rounded-xl shadow-soft-sm">
-                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                              <Hash className="w-4 h-4 text-slate-400" />
-                            </div>
-                            <input
-                              type="text"
-                              required
-                              value={paymentOperation}
-                              onChange={(e) => setPaymentOperation(e.target.value)}
-                              className="w-full pl-9 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-soft"
-                              placeholder="Ej: 351-98765432"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                            3. Adjuntar Comprobante de Pago (* Obligatorio)
-                          </label>
-                          <div className="relative rounded-xl border border-dashed border-slate-300 p-3 bg-slate-50/80 hover:bg-slate-100/80 transition-soft">
-                            <input
-                              type="file"
-                              required={!paymentFile}
-                              accept="image/*,.pdf"
-                              onChange={(e) => setPaymentFile(e.target.files?.[0] || null)}
-                              className="w-full text-xs text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border border-slate-200 file:text-xs file:font-bold file:bg-white file:text-slate-700 hover:file:bg-slate-100 cursor-pointer"
-                            />
-                            {paymentFile && (
-                              <p className="text-[11px] text-emerald-600 font-bold mt-1.5 flex items-center gap-1">
-                                <CheckCircle2 className="w-3.5 h-3.5" /> {paymentFile.name}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex gap-3 pt-2 border-t border-slate-100">
-                          {totalPaid <= 0.01 && request.statusRaw === 'COTIZADA' && (
-                            <button
-                              type="button"
-                              onClick={() => setIsQuotationAccepted(false)}
-                              disabled={submittingPayment}
-                              className="flex-1 py-3.5 bg-white hover:bg-slate-50 text-slate-600 font-bold text-xs rounded-xl transition-soft cursor-pointer border border-slate-200 hover:border-slate-300 disabled:opacity-50 flex items-center justify-center space-x-1.5 shadow-2xs"
-                            >
-                              <span>Volver</span>
-                            </button>
-                          )}
-                          <button
-                            type="submit"
-                            disabled={submittingPayment || !paymentAmount || !paymentOperation.trim() || !paymentFile || (totalPaid <= 0.01 && Number(paymentAmount) < (request?.quotation ? parseFloat(request.quotation.total || request.quotation.monto_total || 0) : 0) * 0.30 - 0.01)}
-                            className="flex-[2] py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition-soft cursor-pointer disabled:opacity-50 flex justify-center items-center space-x-2 shadow-soft border border-emerald-700 hover-lift"
-                          >
-                            {submittingPayment ? (
-                              <>
-                                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                <span>Registrando...</span>
-                              </>
-                            ) : (
-                              <>
-                                <span>{totalPaid > 0.01 ? 'Registrar Abono Restante' : 'Registrar y Notificar Pago'}</span>
-                                <ArrowRight className="w-4 h-4" />
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      </form>
+                        </form>
+                      )}
                     </div>
                   </div>
                 </div>

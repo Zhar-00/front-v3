@@ -249,20 +249,32 @@ export const api = {
       }
 
       const mapped = items.map(s => {
-        const opStatusRaw = (s.estado_operativo || s.estado || 'PENDIENTE').toString().toUpperCase();
+        let opStatusRaw = (s.estado_operativo || s.estado || 'PENDIENTE').toString().toUpperCase();
         let mappedStatus = 'Pendiente';
-        if (opStatusRaw === 'ASIGNADA' || opStatusRaw === 'ASIGNADO') {
+        if (['ASIGNADA', 'ASIGNADO'].includes(opStatusRaw) || opStatusRaw.includes('ASIGNAD')) {
           mappedStatus = 'Asignado';
-        } else if (opStatusRaw === 'COTIZADA') {
+        } else if (['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO'].includes(opStatusRaw) || opStatusRaw.includes('COTIZAD') || opStatusRaw.includes('REVISION') || opStatusRaw.includes('REVICION') || opStatusRaw.includes('APROBAD')) {
           mappedStatus = 'Cotizado';
-        } else if (opStatusRaw === 'EN_PROCESO' || opStatusRaw === 'EN CURSO' || opStatusRaw === 'PROCESO' || opStatusRaw === 'EN_EJECUCION') {
+        } else if (['EN_PROCESO', 'EN CURSO', 'PROCESO', 'EN_EJECUCION'].includes(opStatusRaw) || opStatusRaw.includes('PROCESO') || opStatusRaw.includes('CURSO') || opStatusRaw.includes('EJECUCION')) {
           mappedStatus = 'En proceso';
-        } else if (opStatusRaw === 'FINALIZADA' || opStatusRaw === 'FINALIZADO' || opStatusRaw === 'COMPLETADA' || opStatusRaw === 'TERMINADA') {
+        } else if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'PAGADA', 'PAGADO'].includes(opStatusRaw) || opStatusRaw.includes('FINALIZAD') || opStatusRaw.includes('TERMINAD') || opStatusRaw.includes('COMPLETAD')) {
           mappedStatus = 'Finalizado';
-        } else if (opStatusRaw === 'CANCELADA' || opStatusRaw === 'CANCELADO' || opStatusRaw === 'ANULADA' || opStatusRaw === 'RECHAZADA') {
+        } else if (['CANCELADA', 'CANCELADO', 'ANULADA', 'RECHAZADA'].includes(opStatusRaw) || opStatusRaw.includes('CANCELAD') || opStatusRaw.includes('RECHAZAD') || opStatusRaw.includes('ANULAD')) {
           mappedStatus = 'Cancelada';
         } else {
           mappedStatus = opStatusRaw.charAt(0).toUpperCase() + opStatusRaw.slice(1).toLowerCase();
+        }
+
+        const hasHistoryOrQuote = (Array.isArray(s.pagos) && s.pagos.length > 0) ||
+          (Array.isArray(s.payments) && s.payments.length > 0) ||
+          (Array.isArray(s.cotizacion?.pagos) && s.cotizacion.pagos.length > 0) ||
+          parseFloat(s.total_pagado || s.monto_pagado || s.totalPagado || s.cotizacion?.total_pagado || 0) > 0.01 ||
+          ['REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_VALIDACION', 'VERIFICANDO'].includes((s.estado_pago || s.estadoPago || s.estado_financiero || s.cotizacion?.estado_pago || '').toString().toUpperCase()) ||
+          (s.cotizacion && (parseFloat(s.cotizacion.total || s.cotizacion.monto_total || 0) > 0 || (s.cotizacion.estado && s.cotizacion.estado !== 'BORRADOR')));
+
+        if (hasHistoryOrQuote && ['PENDIENTE', 'ASIGNADA', 'ASIGNADO'].includes(opStatusRaw)) {
+          opStatusRaw = 'COTIZADA';
+          mappedStatus = 'Cotizado';
         }
 
         const epRaw = (s.estado_pago || s.estadoPago || s.estado_financiero || s.cotizacion?.estado_pago || 'PENDIENTE').toString().toUpperCase();
@@ -318,20 +330,33 @@ export const api = {
       const data = await handleResponse(response);
       const s = data.solicitud || (data.data && data.data.solicitud) || data.data || data;
 
-      const opStatusRaw = (s.estado_operativo || s.estado || 'PENDIENTE').toString().toUpperCase();
+      let opStatusRaw = (s.estado_operativo || s.estado || 'PENDIENTE').toString().toUpperCase();
       let mappedStatus = 'Pendiente';
-      if (opStatusRaw === 'ASIGNADA' || opStatusRaw === 'ASIGNADO') {
+      if (['ASIGNADA', 'ASIGNADO'].includes(opStatusRaw) || opStatusRaw.includes('ASIGNAD')) {
         mappedStatus = 'Asignado';
-      } else if (opStatusRaw === 'COTIZADA') {
+      } else if (['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO'].includes(opStatusRaw) || opStatusRaw.includes('COTIZAD') || opStatusRaw.includes('REVISION') || opStatusRaw.includes('REVICION') || opStatusRaw.includes('APROBAD')) {
         mappedStatus = 'Cotizado';
-      } else if (opStatusRaw === 'EN_PROCESO' || opStatusRaw === 'EN CURSO' || opStatusRaw === 'PROCESO' || opStatusRaw === 'EN_EJECUCION') {
+      } else if (['EN_PROCESO', 'EN CURSO', 'PROCESO', 'EN_EJECUCION'].includes(opStatusRaw) || opStatusRaw.includes('PROCESO') || opStatusRaw.includes('CURSO') || opStatusRaw.includes('EJECUCION')) {
         mappedStatus = 'En proceso';
-      } else if (opStatusRaw === 'FINALIZADA' || opStatusRaw === 'FINALIZADO' || opStatusRaw === 'COMPLETADA' || opStatusRaw === 'TERMINADA') {
+      } else if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'PAGADA', 'PAGADO'].includes(opStatusRaw) || opStatusRaw.includes('FINALIZAD') || opStatusRaw.includes('TERMINAD') || opStatusRaw.includes('COMPLETAD')) {
         mappedStatus = 'Finalizado';
-      } else if (opStatusRaw === 'CANCELADA' || opStatusRaw === 'CANCELADO' || opStatusRaw === 'ANULADA' || opStatusRaw === 'RECHAZADA') {
+      } else if (['CANCELADA', 'CANCELADO', 'ANULADA', 'RECHAZADA'].includes(opStatusRaw) || opStatusRaw.includes('CANCELAD') || opStatusRaw.includes('RECHAZAD') || opStatusRaw.includes('ANULAD')) {
         mappedStatus = 'Cancelada';
       } else {
         mappedStatus = opStatusRaw.charAt(0).toUpperCase() + opStatusRaw.slice(1).toLowerCase();
+      }
+
+      const hasHistoryOrQuote = (Array.isArray(s.pagos) && s.pagos.length > 0) ||
+        (Array.isArray(s.payments) && s.payments.length > 0) ||
+        (Array.isArray(data?.pagos) && data.pagos.length > 0) ||
+        (Array.isArray(s.cotizacion?.pagos) && s.cotizacion.pagos.length > 0) ||
+        parseFloat(s.total_pagado || s.monto_pagado || s.totalPagado || data?.total_pagado || s.cotizacion?.total_pagado || 0) > 0.01 ||
+        ['REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_VALIDACION', 'VERIFICANDO'].includes((s.estado_pago || s.estadoPago || s.estado_financiero || data?.estado_pago || s.cotizacion?.estado_pago || '').toString().toUpperCase()) ||
+        (s.cotizacion && (parseFloat(s.cotizacion.total || s.cotizacion.monto_total || 0) > 0 || (s.cotizacion.estado && s.cotizacion.estado !== 'BORRADOR')));
+
+      if (hasHistoryOrQuote && ['PENDIENTE', 'ASIGNADA', 'ASIGNADO'].includes(opStatusRaw)) {
+        opStatusRaw = 'COTIZADA';
+        mappedStatus = 'Cotizado';
       }
 
       const epRaw = (s.estado_pago || s.estadoPago || s.estado_financiero || data.estado_pago || s.cotizacion?.estado_pago || 'PENDIENTE').toString().toUpperCase();

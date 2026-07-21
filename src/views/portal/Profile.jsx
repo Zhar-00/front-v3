@@ -107,69 +107,136 @@ const Profile = () => {
     ? requests 
     : requests.filter(r => r.status === statusFilter);
 
-  const getStatusBadge = (status, reqObj = null) => {
-    const sRaw = (reqObj?.statusRaw || reqObj?.estado_operativo || status || '').toString().toUpperCase();
+  const getVisualStageIndex = (reqObj, rawIndex) => {
+    if (!reqObj) return rawIndex;
+    let maxIndex = rawIndex;
 
-    if (sRaw === 'CANCELADA' || sRaw === 'CANCELADO' || sRaw === 'ANULADA' || sRaw === 'RECHAZADA' || status === 'Cancelado' || status === 'Anulado') {
+    const timeline = Array.isArray(reqObj.timeline) ? reqObj.timeline : (Array.isArray(reqObj.historial) ? reqObj.historial : []);
+    timeline.forEach(item => {
+      const s = (item.estado || item.status || item.titulo || item.title || item.descripcion || '').toString().toUpperCase();
+      if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'PAGADA', 'PAGADO'].some(k => s.includes(k))) {
+        if (maxIndex < 4) maxIndex = 4;
+      } else if (['EN_PROCESO', 'EN CURSO', 'PROCESO', 'EN_EJECUCION'].some(k => s.includes(k))) {
+        if (maxIndex < 3) maxIndex = 3;
+      }
+    });
+
+    const allPays = Array.isArray(reqObj.payments) ? reqObj.payments : (Array.isArray(reqObj.pagos) ? reqObj.pagos : []);
+    const hasVerifiedPayment = allPays.some(p => ['VERIFICADO', 'APROBADO', 'COMPLETADO'].includes((p.estado || '').toString().toUpperCase()));
+    if (hasVerifiedPayment && maxIndex < 3) {
+      maxIndex = 3;
+    }
+
+    const reqId = reqObj.id || reqObj.idNumeric || reqObj.uuid_solicitud || 'unknown';
+    if (reqId && reqId !== 'unknown') {
+      const storageKey = `sigesto_visual_max_op_stage_${reqId}`;
+      try {
+        const storedMax = Number(localStorage.getItem(storageKey) || 0);
+        if (!isNaN(storedMax) && storedMax > maxIndex && storedMax <= 4) {
+          maxIndex = storedMax;
+        } else if (maxIndex > storedMax) {
+          localStorage.setItem(storageKey, String(maxIndex));
+        }
+      } catch (e) {}
+    }
+
+    return maxIndex;
+  };
+
+  const getStatusBadge = (status, reqObj = null) => {
+    const sRaw = (reqObj?.statusRaw || reqObj?.estado_operativo || reqObj?.estado || reqObj?.status || status || '').toString().toUpperCase();
+
+    if (['CANCELADA', 'CANCELADO', 'ANULADA', 'RECHAZADA'].includes(sRaw) || sRaw.includes('CANCELAD') || sRaw.includes('RECHAZAD') || sRaw.includes('ANULAD')) {
       return <span className="bg-rose-50 text-rose-600 text-[10px] font-semibold px-2 py-0.5 rounded border border-rose-200 uppercase">Cancelado</span>;
     }
-    if (sRaw === 'FINALIZADA' || sRaw === 'FINALIZADO' || sRaw === 'COMPLETADA' || sRaw === 'TERMINADA' || status === 'Finalizado') {
+
+    let baseIdx = 0;
+    if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'PAGADA', 'PAGADO'].includes(sRaw) || sRaw.includes('FINALIZAD') || sRaw.includes('TERMINAD') || sRaw.includes('COMPLETAD')) baseIdx = 4;
+    else if (['EN_PROCESO', 'EN CURSO', 'PROCESO', 'EN_EJECUCION'].includes(sRaw) || sRaw.includes('PROCESO') || sRaw.includes('CURSO') || sRaw.includes('EJECUCION')) baseIdx = 3;
+    else if (['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO'].includes(sRaw) || sRaw.includes('COTIZAD') || sRaw.includes('REVISION') || sRaw.includes('REVICION') || sRaw.includes('APROBAD')) baseIdx = 2;
+    else if (['ASIGNADA', 'ASIGNADO'].includes(sRaw) || sRaw.includes('ASIGNAD')) baseIdx = 1;
+
+    let hasPaymentsOrReview = reqObj?.hasInReviewPayment === true ||
+      (Array.isArray(reqObj?.payments) && reqObj.payments.length > 0) ||
+      parseFloat(reqObj?.total_pagado || reqObj?.monto_pagado || reqObj?.totalPagado || 0) > 0.01 ||
+      ['REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_VALIDACION', 'VERIFICANDO'].includes((reqObj?.estado_pago || reqObj?.estadoPago || reqObj?.cotizacion?.estado_pago || '').toString().toUpperCase()) ||
+      (reqObj?.quotation && (parseFloat(reqObj.quotation.total || reqObj.quotation.monto_total || 0) > 0 || (reqObj.quotation.status && reqObj.quotation.status !== 'BORRADOR')));
+
+    if (!hasPaymentsOrReview && reqObj && (reqObj.id || reqObj.idNumeric)) {
+      try {
+        const localPending = JSON.parse(localStorage.getItem(`sigesto_pending_payments_${reqObj.id}`) || localStorage.getItem(`sigesto_pending_payments_${reqObj.idNumeric}`) || '[]');
+        if (Array.isArray(localPending) && localPending.length > 0) {
+          hasPaymentsOrReview = true;
+        }
+      } catch (e) {}
+    }
+
+    if (hasPaymentsOrReview && baseIdx < 2) baseIdx = 2;
+
+    const visualIdx = getVisualStageIndex(reqObj, baseIdx);
+
+    if (visualIdx === 4) {
       return <span className="bg-emerald-50 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-emerald-200 uppercase">Finalizado</span>;
     }
-    if (sRaw === 'EN_PROCESO' || sRaw === 'EN CURSO' || sRaw === 'PROCESO' || sRaw === 'EN_EJECUCION' || status === 'En ejecución' || status === 'En curso') {
+    if (visualIdx === 3) {
       return <span className="bg-purple-50 text-purple-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-purple-200 uppercase">En Proceso</span>;
     }
-    if (sRaw === 'COTIZADA' || status === 'Cotizado') {
+    if (visualIdx === 2) {
       return <span className="bg-blue-50 text-blue-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-blue-200 uppercase">Cotizado</span>;
     }
-    if (sRaw === 'ASIGNADA' || sRaw === 'ASIGNADO' || status === 'Asignado') {
+    if (visualIdx === 1) {
       return <span className="bg-indigo-50 text-indigo-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-indigo-200 uppercase">Asignado</span>;
-    }
-    if (status === 'En camino') {
-      return <span className="bg-sky-50 text-sky-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-sky-200 uppercase animate-pulse">En camino</span>;
     }
     return <span className="bg-slate-100 text-slate-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-slate-200 uppercase">Pendiente</span>;
   };
 
   const getFinancialBadge = (reqObj) => {
     if (!reqObj) return null;
-    let estadoPago = (reqObj?.estado_pago || reqObj?.estadoPago || 'PENDIENTE').toString().toUpperCase();
+    const estado = (reqObj?.statusRaw || reqObj?.estado_operativo || reqObj?.estado || reqObj?.status || '').toString().toUpperCase();
+    const totalAmount = parseFloat(reqObj?.quotation?.total || reqObj?.quotation?.monto_total || 0);
 
+    let allPayments = Array.isArray(reqObj?.payments) ? [...reqObj.payments] : [];
     try {
       const localPending = JSON.parse(localStorage.getItem(`sigesto_pending_payments_${reqObj?.id}`) || localStorage.getItem(`sigesto_pending_payments_${reqObj?.idNumeric}`) || '[]');
       if (Array.isArray(localPending) && localPending.length > 0) {
-        const allPayments = Array.isArray(reqObj?.payments) ? reqObj.payments : [];
         const existingIds = new Set(allPayments.map(p => String(p.id_pago || p.id)));
         const unverified = localPending.filter(lp => !existingIds.has(String(lp.id_pago || lp.id)));
-        if (unverified.length > 0 && estadoPago !== 'COMPLETADO') {
-          estadoPago = 'EN_REVISION';
-        }
+        allPayments = [...unverified, ...allPayments];
       }
     } catch (e) {}
 
-    if (estadoPago === 'COMPLETADO') {
+    const totalPaid = Math.max(
+      allPayments
+        .filter(p => !['RECHAZADO', 'CANCELADO'].includes((p.estado || '').toString().toUpperCase()))
+        .reduce((sum, p) => sum + parseFloat(p.monto_pagado || p.monto || 0), 0),
+      parseFloat(reqObj?.total_pagado || reqObj?.monto_pagado || reqObj?.totalPagado || 0)
+    );
+
+    const hasInReviewPayment = allPayments.some(p => ['EN REVISION', 'EN_REVISION', 'REVISION', 'PENDIENTE_VALIDACION', 'PENDIENTE DE VALIDACION', 'VERIFICANDO'].includes((p.estado || '').toString().toUpperCase()));
+
+    if ((totalAmount > 0 && totalPaid >= totalAmount - 0.01) || estado === 'PAGADA' || (reqObj?.estado_pago || '').toString().toUpperCase() === 'COMPLETADO') {
       return (
         <span className="inline-flex items-center bg-emerald-50 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-emerald-200 uppercase">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
-          Completado
+          Pagado / Liquidado
         </span>
       );
     }
 
-    if (estadoPago === 'EN_REVISION') {
+    if (estado === 'REVISION_PAGO' || hasInReviewPayment || (reqObj?.estado_pago || '').toString().toUpperCase() === 'EN_REVISION') {
       return (
         <span className="inline-flex items-center bg-sky-50 text-sky-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-sky-200 uppercase">
           <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mr-1.5 animate-pulse"></span>
-          En Revisión
+          Pago en Revisión
         </span>
       );
     }
 
-    if (estadoPago === 'ADELANTO') {
+    if (totalPaid > 0.01 || ['APROBADA', 'EN_PROCESO'].includes(estado) || (reqObj?.estado_pago || '').toString().toUpperCase() === 'ADELANTO') {
       return (
         <span className="inline-flex items-center bg-amber-50 text-amber-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-amber-200 uppercase">
           <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5"></span>
-          Adelanto
+          Adelanto Confirmado
         </span>
       );
     }
@@ -177,7 +244,7 @@ const Profile = () => {
     return (
       <span className="inline-flex items-center bg-slate-100 text-slate-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-slate-200 uppercase">
         <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5"></span>
-        Pendiente de Pago
+        Por Cotizar / Pendiente de Pago
       </span>
     );
   };
