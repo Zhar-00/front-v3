@@ -16,7 +16,10 @@ import {
   MapPin,
   FileText,
   Sparkles,
-  Calendar
+  Calendar,
+  Search,
+  Filter,
+  ArrowUpDown
 } from 'lucide-react';
 
 const OPERATIONAL_STAGES = [
@@ -83,11 +86,13 @@ const getVisualOperationalStageIndex = (requestObj, rawIndex, paymentsList = [])
   if (reqId && reqId !== 'unknown') {
     const storageKey = `sigesto_visual_max_op_stage_${reqId}`;
     try {
-      const storedMax = Number(localStorage.getItem(storageKey) || 0);
       const rawS = (requestObj.statusRaw || requestObj.estado_operativo || requestObj.estado || requestObj.status || '').toString().toUpperCase();
       const isTrulyFinal = ['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'CONCLUIDA'].some(k => rawS.includes(k)) || timeline.some(t => ['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'CONCLUIDA'].some(k => (t.estado || t.status || t.titulo || '').toString().toUpperCase().includes(k)));
+      const isCancelled = ['CANCELADA', 'CANCELADO', 'ANULADA', 'RECHAZADA'].some(k => rawS.includes(k));
 
-      if (storedMax === 4 && !isTrulyFinal) {
+      if (isCancelled) {
+        maxIndex = -1;
+      } else if (storedMax === 4 && !isTrulyFinal) {
         localStorage.setItem(storageKey, String(maxIndex));
       } else if (!isNaN(storedMax) && storedMax > maxIndex && storedMax <= (isTrulyFinal ? 4 : 3)) {
         maxIndex = storedMax;
@@ -166,6 +171,10 @@ const Dashboard = () => {
   const [cancelLoadingId, setCancelLoadingId] = useState(null);
   const [dashboardError, setDashboardError] = useState(null);
   const [showAllHistory, setShowAllHistory] = useState(false);
+  const [filterEmergency, setFilterEmergency] = useState(false);
+  const [filterStatus, setFilterStatus] = useState('ALL');
+  const [filterDateOrder, setFilterDateOrder] = useState('DESC');
+  const [filterSearch, setFilterSearch] = useState('');
 
   const fetchRequests = async (isBackground = false) => {
     if (!isBackground) {
@@ -251,25 +260,35 @@ const Dashboard = () => {
     let isMounted = true;
     fetchRequests(false);
 
-    // Sincronización automática en segundo plano cada 10 segundos sin recarga
+    // Sincronización automática en segundo plano cada 5 segundos sin recarga para actualizar tarjetas
     const intervalId = setInterval(() => {
       if (isMounted && document.visibilityState === 'visible') {
         fetchRequests(true);
       }
-    }, 10000);
+    }, 5000);
 
-    // Sincronizar de inmediato cuando la pestaña recupera el foco
+    // Sincronizar de inmediato cuando la pestaña recupera el foco o cambia el estado/pago
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && isMounted) {
         fetchRequests(true);
       }
     };
+    const handleSyncEvent = () => {
+      if (isMounted) fetchRequests(true);
+    };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('storage', handleSyncEvent);
+    window.addEventListener('sigesto-status-updated', handleSyncEvent);
+    window.addEventListener('sigesto-payment-updated', handleSyncEvent);
 
     return () => {
       isMounted = false;
       clearInterval(intervalId);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('storage', handleSyncEvent);
+      window.removeEventListener('sigesto-status-updated', handleSyncEvent);
+      window.removeEventListener('sigesto-payment-updated', handleSyncEvent);
     };
   }, []);
 
@@ -359,8 +378,53 @@ const Dashboard = () => {
   }, [requests]);
 
   const featuredRequest = sortedRequests.length > 0 ? sortedRequests[0] : null;
-  const historyRequests = sortedRequests.length > 1 ? sortedRequests.slice(1) : [];
-  const visibleHistory = showAllHistory ? historyRequests : historyRequests.slice(0, 6);
+
+  // Filtros interactivos para Historial Reciente
+  const isFilterActive = filterEmergency || filterStatus !== 'ALL' || filterSearch.trim() !== '' || filterDateOrder !== 'DESC';
+
+  const baseHistoryList = React.useMemo(() => {
+    if (sortedRequests.length === 0) return [];
+    if (sortedRequests.length === 1 || isFilterActive) {
+      return sortedRequests;
+    }
+    return sortedRequests.slice(1);
+  }, [sortedRequests, isFilterActive]);
+
+  const filteredHistoryRequests = React.useMemo(() => {
+    return baseHistoryList.filter(request => {
+      if (filterEmergency && !request.isEmergency) {
+        return false;
+      }
+      if (filterStatus !== 'ALL') {
+        const sRaw = (request.statusRaw || request.status || '').toString().toUpperCase();
+        const opIdx = getVisualOperationalStageIndex(request, getOperationalStageIndex(sRaw, request));
+        if (filterStatus === 'PENDIENTE' && opIdx !== 0) return false;
+        if (filterStatus === 'ASIGNADA' && opIdx !== 1) return false;
+        if (filterStatus === 'COTIZADA' && opIdx !== 2) return false;
+        if (filterStatus === 'EN_PROCESO' && opIdx !== 3) return false;
+        if (filterStatus === 'FINALIZADA' && opIdx !== 4) return false;
+        if (filterStatus === 'CANCELADA' && opIdx !== -1) return false;
+      }
+      if (filterSearch.trim() !== '') {
+        const query = filterSearch.trim().toLowerCase();
+        const matchId = String(request.id || request.idNumeric || '').toLowerCase().includes(query);
+        const matchType = String(request.type || '').toLowerCase().includes(query);
+        const matchDesc = String(request.description || '').toLowerCase().includes(query);
+        const matchAddress = String(request.location?.address || '').toLowerCase().includes(query);
+        if (!matchId && !matchType && !matchDesc && !matchAddress) return false;
+      }
+      return true;
+    }).sort((a, b) => {
+      const timeA = new Date(a.createdAt || 0).getTime();
+      const timeB = new Date(b.createdAt || 0).getTime();
+      if (filterDateOrder === 'ASC') {
+        return timeA - timeB;
+      }
+      return timeB - timeA;
+    });
+  }, [baseHistoryList, filterEmergency, filterStatus, filterSearch, filterDateOrder]);
+
+  const visibleHistory = showAllHistory ? filteredHistoryRequests : filteredHistoryRequests.slice(0, 6);
 
   const currentStageIndex = featuredRequest
     ? getVisualOperationalStageIndex(featuredRequest, getOperationalStageIndex(featuredRequest.statusRaw || featuredRequest.status, featuredRequest))
@@ -680,77 +744,199 @@ const Dashboard = () => {
 
       </div>
 
-      {/* HISTORIAL RECIENTE - PANTALLA COMPLETA (100% ANCHO, 3 COLUMNAS) */}
-      {!loading && !dashboardError && requests.length > 0 && historyRequests.length > 0 && (
-        <div className="mt-8 lg:mt-10 space-y-4 animate-slide-up" style={{ animationDelay: '0.3s' }}>
-          <div className="flex items-center justify-between border-b border-slate-200/60 pb-3">
+      {/* HISTORIAL RECIENTE - PANTALLA COMPLETA (100% ANCHO, 3 COLUMNAS) CON FILTROS */}
+      {!loading && !dashboardError && requests.length > 0 && (
+        <div className="mt-8 lg:mt-10 space-y-5 animate-slide-up" style={{ animationDelay: '0.3s' }}>
+          <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-200/60 pb-4 gap-4">
             <div>
-              <h3 className="font-display font-bold text-sm text-slate-500 uppercase tracking-wider">Historial Reciente</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Todas tus solicitudes operativas y su estado en tiempo real</p>
+              <h3 className="font-display font-bold text-sm text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                <span>Historial Reciente y Solicitudes</span>
+                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full text-[11px] font-extrabold border border-indigo-100">
+                  {filteredHistoryRequests.length} de {sortedRequests.length}
+                </span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">Filtra por urgencia, fecha o estado de proceso y visualiza los estados actualizados automáticamente</p>
             </div>
-            <span className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold">
-              Total: {historyRequests.length}
-            </span>
+
+            {/* Barra de Búsqueda Rápida */}
+            <div className="relative w-full md:w-72 shrink-0">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Buscar por tipo, descripción, # o dirección..."
+                value={filterSearch}
+                onChange={(e) => setFilterSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-white/80 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-soft placeholder:text-slate-400"
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
-            {visibleHistory.map((request) => (
-              <div 
-                key={request.id}
-                className="bg-white/80 backdrop-blur-md border border-slate-200/60 rounded-2xl p-5 shadow-soft hover:border-slate-300 transition-soft flex flex-col justify-between space-y-3"
-              >
-                <div className="space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                      {new Date(request.createdAt).toLocaleDateString('es-ES', { month: 'short', day: 'numeric' })}
-                    </span>
-                    {request.isEmergency && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100">
-                        URGENTE
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Estado de Flujo Operativo y Estado Financiero */}
-                  <div className="flex flex-col gap-1.5 pt-0.5">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">Flujo Operativo</span>
-                      <div className="shrink-0">{getStatusBadge(request.status, request)}</div>
-                    </div>
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">Estado Financiero</span>
-                      <div className="shrink-0">{getFinancialBadge(request)}</div>
-                    </div>
-                  </div>
-
-                  <div className="pt-1.5 border-t border-slate-100/80">
-                    <h4 className="font-bold text-slate-800 text-sm truncate">{request.type}</h4>
-                    <p className="text-xs text-slate-400 line-clamp-2 mt-1">{request.description}</p>
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between mt-auto">
-                  <span className="text-[10px] font-mono text-slate-400 truncate max-w-[80px]">
-                    #{typeof request.id === 'string' && request.id.length > 8 ? request.id.slice(0, 6) : request.id}
-                  </span>
-                  <Link
-                    to={`/tracking/${request.id}`}
-                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center transition-soft shrink-0"
+          {/* BARRA DE FILTROS E INTERACCIÓN */}
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            
+            {/* Filtros horizontales: Pestañas de Estado Operativo */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 lg:pb-0 scrollbar-none">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 shrink-0 flex items-center">
+                <Filter className="w-3.5 h-3.5 mr-1 text-slate-500" /> Estado:
+              </span>
+              {[
+                { id: 'ALL', label: 'Todos' },
+                { id: 'PENDIENTE', label: 'Pendiente' },
+                { id: 'ASIGNADA', label: 'Asignado' },
+                { id: 'COTIZADA', label: 'Cotizado' },
+                { id: 'EN_PROCESO', label: 'En Proceso' },
+                { id: 'FINALIZADA', label: 'Finalizado' },
+                { id: 'CANCELADA', label: 'Cancelado' }
+              ].map((tab) => {
+                const isActive = filterStatus === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setFilterStatus(tab.id);
+                      setShowAllHistory(false);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-soft whitespace-nowrap cursor-pointer shrink-0 ${
+                      isActive
+                        ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-500/20'
+                        : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-100/80 hover:text-slate-900'
+                    }`}
                   >
-                    Ver Ficha <ArrowRight className="w-3 h-3 ml-1" />
-                  </Link>
-                </div>
-              </div>
-            ))}
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Controles del filtro derecho: Toggle Urgentes + Orden por Fecha + Limpiar */}
+            <div className="flex items-center flex-wrap gap-2 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-200/60 justify-end shrink-0">
+              <button
+                onClick={() => {
+                  setFilterEmergency(!filterEmergency);
+                  setShowAllHistory(false);
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-soft flex items-center cursor-pointer ${
+                  filterEmergency
+                    ? 'bg-rose-500 text-white border-rose-600 shadow-sm ring-2 ring-rose-500/20'
+                    : 'bg-white text-slate-600 border-slate-200/80 hover:bg-rose-50/60 hover:text-rose-600 hover:border-rose-200'
+                }`}
+              >
+                <AlertTriangle className={`w-3.5 h-3.5 mr-1.5 ${filterEmergency ? 'text-white' : 'text-rose-500'}`} />
+                Solo Urgentes
+              </button>
+
+              <button
+                onClick={() => {
+                  setFilterDateOrder(filterDateOrder === 'DESC' ? 'ASC' : 'DESC');
+                }}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-100/80 transition-soft flex items-center cursor-pointer"
+                title="Cambiar orden por fecha"
+              >
+                <ArrowUpDown className="w-3.5 h-3.5 mr-1.5 text-indigo-500" />
+                {filterDateOrder === 'DESC' ? 'Más recientes' : 'Más antiguos'}
+              </button>
+
+              {isFilterActive && (
+                <button
+                  onClick={() => {
+                    setFilterEmergency(false);
+                    setFilterStatus('ALL');
+                    setFilterDateOrder('DESC');
+                    setFilterSearch('');
+                    setShowAllHistory(false);
+                  }}
+                  className="px-2.5 py-1.5 text-xs font-bold text-slate-400 hover:text-rose-600 transition-soft cursor-pointer underline"
+                >
+                  Limpiar filtros
+                </button>
+              )}
+            </div>
           </div>
+
+          {/* Grid del Historial Filtrado */}
+          {filteredHistoryRequests.length === 0 ? (
+            <div className="bg-white/80 border border-slate-200/60 rounded-3xl p-10 text-center shadow-soft space-y-3">
+              <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-full flex items-center justify-center mx-auto border border-slate-100">
+                <Filter className="w-5 h-5" />
+              </div>
+              <p className="text-sm font-bold text-slate-700">No se encontraron solicitudes</p>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                No hay resultados que coincidan con los filtros de búsqueda, urgencia o estado seleccionados.
+              </p>
+              {isFilterActive && (
+                <button
+                  onClick={() => {
+                    setFilterEmergency(false);
+                    setFilterStatus('ALL');
+                    setFilterDateOrder('DESC');
+                    setFilterSearch('');
+                  }}
+                  className="px-4 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 text-xs font-bold rounded-xl transition-soft cursor-pointer inline-flex items-center mt-2"
+                >
+                  Restablecer todos los filtros
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+              {visibleHistory.map((request) => (
+                <div 
+                  key={request.id}
+                  className="bg-white/80 backdrop-blur-md border border-slate-200/60 rounded-2xl p-5 shadow-soft hover:border-slate-300 transition-soft flex flex-col justify-between space-y-3"
+                >
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        {new Date(request.createdAt).toLocaleDateString('es-ES', { month: 'short', day: 'numeric' })}
+                      </span>
+                      {request.isEmergency && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-100">
+                          URGENTE
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Estado de Flujo Operativo y Estado Financiero actualizándose en vivo */}
+                    <div className="flex flex-col gap-1.5 pt-0.5">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">Flujo Operativo</span>
+                        <div className="shrink-0">{getStatusBadge(request.status, request)}</div>
+                      </div>
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider shrink-0">Estado Financiero</span>
+                        <div className="shrink-0">{getFinancialBadge(request)}</div>
+                      </div>
+                    </div>
+
+                    <div className="pt-1.5 border-t border-slate-100/80">
+                      <h4 className="font-bold text-slate-800 text-sm truncate">{request.type}</h4>
+                      <p className="text-xs text-slate-400 line-clamp-2 mt-1">{request.description}</p>
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between mt-auto">
+                    <span className="text-[10px] font-mono text-slate-400 truncate max-w-[80px]">
+                      #{typeof request.id === 'string' && request.id.length > 8 ? request.id.slice(0, 6) : request.id}
+                    </span>
+                    <Link
+                      to={`/tracking/${request.id}`}
+                      className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center transition-soft shrink-0"
+                    >
+                      Ver Ficha <ArrowRight className="w-3 h-3 ml-1" />
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           
-          {historyRequests.length > 6 && (
+          {filteredHistoryRequests.length > 6 && (
             <div className="pt-2 text-center">
               <button
                 onClick={() => setShowAllHistory(!showAllHistory)}
                 className="inline-flex items-center justify-center px-6 py-2.5 bg-white hover:bg-slate-50 text-slate-600 text-xs font-bold rounded-xl border border-slate-200 transition-soft cursor-pointer hover-lift shadow-sm"
               >
-                {showAllHistory ? 'Ver Menos' : `Ver más (${historyRequests.length - 6} restantes)`}
+                {showAllHistory ? 'Ver Menos' : `Ver más (${filteredHistoryRequests.length - 6} restantes)`}
               </button>
             </div>
           )}
