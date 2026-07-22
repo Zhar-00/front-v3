@@ -142,6 +142,14 @@ const RequestWizard = () => {
   };
 
 
+  const isScheduledTimeValid = (timeStr) => {
+    if (!timeStr) return true;
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    if (isNaN(hours) || isNaN(minutes)) return true;
+    const totalMinutes = hours * 60 + minutes;
+    return totalMinutes >= 540 && totalMinutes <= 1320; // 09:00 (540) a 22:00 (1320)
+  };
+
   const handleNext = () => {
     if (step === 1 && !incidentType) {
       alert('Por favor seleccione un tipo de incidencia.');
@@ -156,9 +164,15 @@ const RequestWizard = () => {
       return;
     }
     if (step === 4) {
-      if (!isEmergency && !scheduledDate) {
-        alert('Por favor ingrese la fecha para programar la visita.');
-        return;
+      if (!isEmergency) {
+        if (!scheduledDate) {
+          alert('Por favor ingrese la fecha para programar la visita.');
+          return;
+        }
+        if (scheduledTime && !isScheduledTimeValid(scheduledTime)) {
+          alert('El horario preferido debe estar dentro de nuestro horario de atención: entre las 09:00 y las 22:00 horas.');
+          return;
+        }
       }
     }
     setStep(prev => prev + 1);
@@ -172,6 +186,16 @@ const RequestWizard = () => {
     if (!description || description.trim().length < 10) {
       alert('La descripción debe tener al menos 10 caracteres.');
       return;
+    }
+    if (!isEmergency) {
+      if (!scheduledDate) {
+        alert('Por favor ingrese la fecha para programar la visita.');
+        return;
+      }
+      if (scheduledTime && !isScheduledTimeValid(scheduledTime)) {
+        alert('El horario preferido debe estar dentro de nuestro horario de atención: entre las 09:00 y las 22:00 horas.');
+        return;
+      }
     }
     setIsSubmitting(true);
     try {
@@ -554,11 +578,28 @@ const RequestWizard = () => {
                         <Clock className="absolute left-3 top-[50%] -translate-y-[50%] w-4.5 h-4.5 text-slate-400 pointer-events-none" />
                         <input
                           type="time"
+                          min="09:00"
+                          max="22:00"
                           value={scheduledTime}
                           onChange={(e) => setScheduledTime(e.target.value)}
-                          className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:outline-none focus:border-indigo-500 focus:bg-white transition-soft"
+                          className={`w-full pl-10 pr-4 py-2.5 bg-slate-50 border rounded-2xl text-sm focus:outline-none focus:bg-white transition-soft ${
+                            scheduledTime && !isScheduledTimeValid(scheduledTime)
+                              ? 'border-rose-400 text-rose-600 focus:border-rose-500 bg-rose-50/30'
+                              : 'border-slate-200 focus:border-indigo-500'
+                          }`}
                         />
                       </div>
+                      {scheduledTime && !isScheduledTimeValid(scheduledTime) ? (
+                        <p className="text-[11px] font-semibold text-rose-600 mt-1 flex items-center animate-fade-in">
+                          <AlertTriangle className="w-3 h-3 mr-1 shrink-0 text-rose-500" />
+                          El horario permitido es entre las 09:00 y las 22:00 hrs.
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-slate-400 mt-1 flex items-center">
+                          <Clock className="w-3 h-3 mr-1 text-indigo-500 shrink-0" />
+                          Horario de atención: 09:00 a 22:00 hrs.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>

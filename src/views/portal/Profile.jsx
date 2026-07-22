@@ -114,17 +114,19 @@ const Profile = () => {
     const timeline = Array.isArray(reqObj.timeline) ? reqObj.timeline : (Array.isArray(reqObj.historial) ? reqObj.historial : []);
     timeline.forEach(item => {
       const s = (item.estado || item.status || item.titulo || item.title || item.descripcion || '').toString().toUpperCase();
-      if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'PAGADA', 'PAGADO'].some(k => s.includes(k))) {
+      if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'CONCLUIDA'].some(k => s.includes(k))) {
         if (maxIndex < 4) maxIndex = 4;
       } else if (['EN_PROCESO', 'EN CURSO', 'PROCESO', 'EN_EJECUCION'].some(k => s.includes(k))) {
         if (maxIndex < 3) maxIndex = 3;
+      } else if (['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO', 'PAGADA', 'PAGADO'].some(k => s.includes(k))) {
+        if (maxIndex < 2) maxIndex = 2;
       }
     });
 
     const allPays = Array.isArray(reqObj.payments) ? reqObj.payments : (Array.isArray(reqObj.pagos) ? reqObj.pagos : []);
     const hasVerifiedPayment = allPays.some(p => ['VERIFICADO', 'APROBADO', 'COMPLETADO'].includes((p.estado || '').toString().toUpperCase()));
-    if (hasVerifiedPayment && maxIndex < 3) {
-      maxIndex = 3;
+    if (hasVerifiedPayment && maxIndex < 2) {
+      maxIndex = 2;
     }
 
     const reqId = reqObj.id || reqObj.idNumeric || reqObj.uuid_solicitud || 'unknown';
@@ -132,7 +134,12 @@ const Profile = () => {
       const storageKey = `sigesto_visual_max_op_stage_${reqId}`;
       try {
         const storedMax = Number(localStorage.getItem(storageKey) || 0);
-        if (!isNaN(storedMax) && storedMax > maxIndex && storedMax <= 4) {
+        const rawS = (reqObj.statusRaw || reqObj.estado_operativo || reqObj.estado || reqObj.status || '').toString().toUpperCase();
+        const isTrulyFinal = ['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'CONCLUIDA'].some(k => rawS.includes(k)) || timeline.some(t => ['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'CONCLUIDA'].some(k => (t.estado || t.status || t.titulo || '').toString().toUpperCase().includes(k)));
+
+        if (storedMax === 4 && !isTrulyFinal) {
+          localStorage.setItem(storageKey, String(maxIndex));
+        } else if (!isNaN(storedMax) && storedMax > maxIndex && storedMax <= (isTrulyFinal ? 4 : 3)) {
           maxIndex = storedMax;
         } else if (maxIndex > storedMax) {
           localStorage.setItem(storageKey, String(maxIndex));
@@ -151,18 +158,30 @@ const Profile = () => {
     }
 
     let baseIdx = 0;
-    if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'PAGADA', 'PAGADO'].includes(sRaw) || sRaw.includes('FINALIZAD') || sRaw.includes('TERMINAD') || sRaw.includes('COMPLETAD')) baseIdx = 4;
+    if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'CONCLUIDA'].includes(sRaw) || sRaw.includes('FINALIZAD') || sRaw.includes('TERMINAD') || sRaw.includes('COMPLETAD') || sRaw.includes('CONCLUID')) baseIdx = 4;
     else if (['EN_PROCESO', 'EN CURSO', 'PROCESO', 'EN_EJECUCION'].includes(sRaw) || sRaw.includes('PROCESO') || sRaw.includes('CURSO') || sRaw.includes('EJECUCION')) baseIdx = 3;
-    else if (['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO'].includes(sRaw) || sRaw.includes('COTIZAD') || sRaw.includes('REVISION') || sRaw.includes('REVICION') || sRaw.includes('APROBAD')) baseIdx = 2;
+    else if (['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO', 'PAGADA', 'PAGADO'].includes(sRaw) || sRaw.includes('COTIZAD') || sRaw.includes('REVISION') || sRaw.includes('REVICION') || sRaw.includes('APROBAD') || sRaw.includes('PAGAD')) baseIdx = 2;
     else if (['ASIGNADA', 'ASIGNADO'].includes(sRaw) || sRaw.includes('ASIGNAD')) baseIdx = 1;
+
+    const stRaw = (reqObj?.statusRaw || reqObj?.status || '').toString().toUpperCase();
+    const epRaw = (reqObj?.estado_pago || reqObj?.estadoPago || '').toString().toUpperCase();
+    const totPaidCheck = parseFloat(reqObj?.total_pagado || reqObj?.monto_pagado || reqObj?.totalPagado || 0);
+    const totAmountCheck = parseFloat(reqObj?.quotation?.total || reqObj?.quotation?.monto_total || 0);
+
+    if (stRaw === 'PAGADA' || epRaw === 'COMPLETADO' || (totAmountCheck > 0 && totPaidCheck >= totAmountCheck - 0.01)) {
+      try {
+        if (reqObj?.id) localStorage.removeItem(`sigesto_pending_payments_${reqObj.id}`);
+        if (reqObj?.idNumeric) localStorage.removeItem(`sigesto_pending_payments_${reqObj.idNumeric}`);
+      } catch (e) {}
+    }
 
     let hasPaymentsOrReview = reqObj?.hasInReviewPayment === true ||
       (Array.isArray(reqObj?.payments) && reqObj.payments.length > 0) ||
-      parseFloat(reqObj?.total_pagado || reqObj?.monto_pagado || reqObj?.totalPagado || 0) > 0.01 ||
+      totPaidCheck > 0.01 ||
       ['REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_VALIDACION', 'VERIFICANDO'].includes((reqObj?.estado_pago || reqObj?.estadoPago || reqObj?.cotizacion?.estado_pago || '').toString().toUpperCase()) ||
-      (reqObj?.quotation && (parseFloat(reqObj.quotation.total || reqObj.quotation.monto_total || 0) > 0 || (reqObj.quotation.status && reqObj.quotation.status !== 'BORRADOR')));
+      (reqObj?.quotation && (totAmountCheck > 0 || (reqObj.quotation.status && reqObj.quotation.status !== 'BORRADOR')));
 
-    if (!hasPaymentsOrReview && reqObj && (reqObj.id || reqObj.idNumeric)) {
+    if (!hasPaymentsOrReview && reqObj && (reqObj.id || reqObj.idNumeric) && stRaw !== 'PAGADA' && epRaw !== 'COMPLETADO') {
       try {
         const localPending = JSON.parse(localStorage.getItem(`sigesto_pending_payments_${reqObj.id}`) || localStorage.getItem(`sigesto_pending_payments_${reqObj.idNumeric}`) || '[]');
         if (Array.isArray(localPending) && localPending.length > 0) {
@@ -193,6 +212,7 @@ const Profile = () => {
   const getFinancialBadge = (reqObj) => {
     if (!reqObj) return null;
     const estado = (reqObj?.statusRaw || reqObj?.estado_operativo || reqObj?.estado || reqObj?.status || '').toString().toUpperCase();
+    const estadoPago = (reqObj?.estado_pago || reqObj?.estadoPago || 'PENDIENTE').toString().toUpperCase();
     const totalAmount = parseFloat(reqObj?.quotation?.total || reqObj?.quotation?.monto_total || 0);
 
     let allPayments = Array.isArray(reqObj?.payments) ? [...reqObj.payments] : [];
@@ -205,16 +225,56 @@ const Profile = () => {
       }
     } catch (e) {}
 
-    const totalPaid = Math.max(
-      allPayments
-        .filter(p => !['RECHAZADO', 'CANCELADO'].includes((p.estado || '').toString().toUpperCase()))
-        .reduce((sum, p) => sum + parseFloat(p.monto_pagado || p.monto || 0), 0),
-      parseFloat(reqObj?.total_pagado || reqObj?.monto_pagado || reqObj?.totalPagado || 0)
+    const activePayments = allPayments.filter(p => !['RECHAZADO', 'CANCELADO'].includes((p.estado || '').toString().toUpperCase()));
+
+    const isPaymentVerified = (pago, idx, activeList = activePayments) => {
+      const pEstado = (pago.estado || '').toString().toUpperCase();
+      if (['RECHAZADO', 'CANCELADO'].includes(pEstado)) return false;
+      if (['VERIFICADO', 'APROBADO', 'COMPLETADO', 'PAGADO', 'CONFIRMADO', 'VALIDADO'].includes(pEstado)) return true;
+      if (estado === 'PAGADA' || estadoPago === 'COMPLETADO') return true;
+
+      const isLocal = String(pago.id_pago || pago.id || '').startsWith('local-') || pago.isLocalPending;
+      if (isLocal) return false;
+
+      const concepto = (pago.concepto || '').toLowerCase();
+      const isRestanteConcept = concepto.includes('saldo') || concepto.includes('liquid') || concepto.includes('restante');
+      if (isRestanteConcept && estado !== 'PAGADA' && estadoPago !== 'COMPLETADO') return false;
+
+      if (activeList.length > 1 || ['APROBADA', 'EN_PROCESO'].includes(estado) || estadoPago === 'ADELANTO') {
+        if (activeList.length > 1) {
+          const oldestPayment = activeList.reduce((oldest, current) => {
+            const idOld = parseFloat(oldest.id_pago || oldest.id || 999999999);
+            const idCur = parseFloat(current.id_pago || current.id || 999999999);
+            if (!isNaN(idOld) && !isNaN(idCur) && idOld !== 999999999 && idCur !== 999999999) {
+              return idCur < idOld ? current : oldest;
+            }
+            return activeList[activeList.length - 1];
+          }, activeList[0]);
+
+          if (pago === oldestPayment || (pago.id_pago && String(pago.id_pago) === String(oldestPayment.id_pago))) {
+            return true;
+          } else {
+            return false;
+          }
+        }
+
+        if (['APROBADA', 'EN_PROCESO'].includes(estado) || estadoPago === 'ADELANTO') {
+          return true;
+        }
+      }
+
+      return false;
+    };
+
+    const verifiedPayments = allPayments.filter((p, i) => isPaymentVerified(p, i));
+    const inReviewPayments = allPayments.filter((p, i) => !isPaymentVerified(p, i) && !['RECHAZADO', 'CANCELADO'].includes((p.estado || '').toString().toUpperCase()));
+    const verifiedTotalPaid = Math.max(
+      verifiedPayments.reduce((sum, p) => sum + parseFloat(p.monto_pagado || p.monto || 0), 0),
+      estado === 'PAGADA' || estadoPago === 'COMPLETADO' ? parseFloat(reqObj?.total_pagado || reqObj?.monto_pagado || reqObj?.totalPagado || 0) : 0
     );
 
-    const hasInReviewPayment = allPayments.some(p => ['EN REVISION', 'EN_REVISION', 'REVISION', 'PENDIENTE_VALIDACION', 'PENDIENTE DE VALIDACION', 'VERIFICANDO'].includes((p.estado || '').toString().toUpperCase()));
-
-    if ((totalAmount > 0 && totalPaid >= totalAmount - 0.01) || estado === 'PAGADA' || (reqObj?.estado_pago || '').toString().toUpperCase() === 'COMPLETADO') {
+    // 1. Pagado / Liquidado (aprobado por admin)
+    if (estado === 'PAGADA' || estadoPago === 'COMPLETADO' || (totalAmount > 0 && verifiedTotalPaid >= totalAmount - 0.01 && inReviewPayments.length === 0)) {
       return (
         <span className="inline-flex items-center bg-emerald-50 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-emerald-200 uppercase">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
@@ -223,16 +283,28 @@ const Profile = () => {
       );
     }
 
-    if (estado === 'REVISION_PAGO' || hasInReviewPayment || (reqObj?.estado_pago || '').toString().toUpperCase() === 'EN_REVISION') {
+    // 2. Liquidación en Revisión
+    if ((verifiedTotalPaid > 0.01 || ['APROBADA', 'EN_PROCESO'].includes(estado) || estadoPago === 'ADELANTO' || activePayments.length > 1) && inReviewPayments.length > 0) {
       return (
         <span className="inline-flex items-center bg-sky-50 text-sky-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-sky-200 uppercase">
           <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mr-1.5 animate-pulse"></span>
-          Pago en Revisión
+          Liquidación en Revisión
         </span>
       );
     }
 
-    if (totalPaid > 0.01 || ['APROBADA', 'EN_PROCESO'].includes(estado) || (reqObj?.estado_pago || '').toString().toUpperCase() === 'ADELANTO') {
+    // 3. Adelanto en Revisión
+    if (inReviewPayments.length > 0 && verifiedTotalPaid <= 0.01 && !['APROBADA', 'EN_PROCESO'].includes(estado) && estadoPago !== 'ADELANTO') {
+      return (
+        <span className="inline-flex items-center bg-sky-50 text-sky-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-sky-200 uppercase">
+          <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mr-1.5 animate-pulse"></span>
+          Adelanto en Revisión
+        </span>
+      );
+    }
+
+    // 4. Adelanto Confirmado / Aprobado
+    if (verifiedTotalPaid > 0.01 || ['APROBADA', 'EN_PROCESO'].includes(estado) || estadoPago === 'ADELANTO') {
       return (
         <span className="inline-flex items-center bg-amber-50 text-amber-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-amber-200 uppercase">
           <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5"></span>

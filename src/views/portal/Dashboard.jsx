@@ -30,9 +30,9 @@ const OPERATIONAL_STAGES = [
 const getOperationalStageIndex = (rawStatus, requestObj = null) => {
   const s = (rawStatus || requestObj?.statusRaw || requestObj?.estado_operativo || requestObj?.estado || requestObj?.status || '').toString().toUpperCase();
   if (['CANCELADA', 'CANCELADO', 'ANULADA', 'RECHAZADA'].includes(s) || s.includes('CANCELAD') || s.includes('RECHAZAD') || s.includes('ANULAD')) return -1;
-  if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'PAGADA', 'PAGADO'].includes(s) || s.includes('FINALIZAD') || s.includes('TERMINAD') || s.includes('COMPLETAD')) return 4;
+  if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'CONCLUIDA'].includes(s) || s.includes('FINALIZAD') || s.includes('TERMINAD') || s.includes('COMPLETAD') || s.includes('CONCLUID')) return 4;
   if (['EN_PROCESO', 'EN CURSO', 'PROCESO', 'EN_EJECUCION'].includes(s) || s.includes('PROCESO') || s.includes('CURSO') || s.includes('EJECUCION')) return 3;
-  if (['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO'].includes(s) || s.includes('COTIZAD') || s.includes('REVISION') || s.includes('REVICION') || s.includes('APROBAD')) return 2;
+  if (['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO', 'PAGADA', 'PAGADO'].includes(s) || s.includes('COTIZAD') || s.includes('REVISION') || s.includes('REVICION') || s.includes('APROBAD') || s.includes('PAGAD')) return 2;
 
   let hasPaymentsOrReview = requestObj?.hasInReviewPayment === true ||
     (Array.isArray(requestObj?.payments) && requestObj.payments.length > 0) ||
@@ -62,11 +62,11 @@ const getVisualOperationalStageIndex = (requestObj, rawIndex, paymentsList = [])
   const timeline = Array.isArray(requestObj.timeline) ? requestObj.timeline : (Array.isArray(requestObj.historial) ? requestObj.historial : []);
   timeline.forEach(item => {
     const s = (item.estado || item.status || item.titulo || item.title || item.descripcion || '').toString().toUpperCase();
-    if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'PAGADA', 'PAGADO'].some(k => s.includes(k))) {
+    if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'CONCLUIDA'].some(k => s.includes(k))) {
       if (maxIndex < 4) maxIndex = 4;
     } else if (['EN_PROCESO', 'EN CURSO', 'PROCESO', 'EN_EJECUCION'].some(k => s.includes(k))) {
       if (maxIndex < 3) maxIndex = 3;
-    } else if (['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO'].some(k => s.includes(k))) {
+    } else if (['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO', 'PAGADA', 'PAGADO'].some(k => s.includes(k))) {
       if (maxIndex < 2) maxIndex = 2;
     } else if (['ASIGNADA', 'ASIGNADO'].some(k => s.includes(k))) {
       if (maxIndex < 1) maxIndex = 1;
@@ -75,8 +75,8 @@ const getVisualOperationalStageIndex = (requestObj, rawIndex, paymentsList = [])
 
   const allPays = Array.isArray(paymentsList) && paymentsList.length > 0 ? paymentsList : (Array.isArray(requestObj.payments) ? requestObj.payments : (Array.isArray(requestObj.pagos) ? requestObj.pagos : []));
   const hasVerifiedPayment = allPays.some(p => ['VERIFICADO', 'APROBADO', 'COMPLETADO'].includes((p.estado || '').toString().toUpperCase()));
-  if (hasVerifiedPayment && maxIndex < 3) {
-    maxIndex = 3;
+  if (hasVerifiedPayment && maxIndex < 2) {
+    maxIndex = 2;
   }
 
   const reqId = requestObj.id || requestObj.idNumeric || requestObj.uuid_solicitud || 'unknown';
@@ -84,7 +84,12 @@ const getVisualOperationalStageIndex = (requestObj, rawIndex, paymentsList = [])
     const storageKey = `sigesto_visual_max_op_stage_${reqId}`;
     try {
       const storedMax = Number(localStorage.getItem(storageKey) || 0);
-      if (!isNaN(storedMax) && storedMax > maxIndex && storedMax <= 4) {
+      const rawS = (requestObj.statusRaw || requestObj.estado_operativo || requestObj.estado || requestObj.status || '').toString().toUpperCase();
+      const isTrulyFinal = ['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'CONCLUIDA'].some(k => rawS.includes(k)) || timeline.some(t => ['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'CONCLUIDA'].some(k => (t.estado || t.status || t.titulo || '').toString().toUpperCase().includes(k)));
+
+      if (storedMax === 4 && !isTrulyFinal) {
+        localStorage.setItem(storageKey, String(maxIndex));
+      } else if (!isNaN(storedMax) && storedMax > maxIndex && storedMax <= (isTrulyFinal ? 4 : 3)) {
         maxIndex = storedMax;
       } else if (maxIndex > storedMax) {
         localStorage.setItem(storageKey, String(maxIndex));
@@ -162,7 +167,10 @@ const Dashboard = () => {
   const [dashboardError, setDashboardError] = useState(null);
   const [showAllHistory, setShowAllHistory] = useState(false);
 
-  const fetchRequests = async () => {
+  const fetchRequests = async (isBackground = false) => {
+    if (!isBackground) {
+      setLoading(true);
+    }
     try {
       const [data, allPayments] = await Promise.all([
         api.requests.getAll(),
@@ -178,11 +186,21 @@ const Dashboard = () => {
         });
 
         try {
-          const localPending = JSON.parse(localStorage.getItem(`sigesto_pending_payments_${r.id}`) || localStorage.getItem(`sigesto_pending_payments_${r.idNumeric}`) || '[]');
-          if (Array.isArray(localPending) && localPending.length > 0) {
-            const serverIds = new Set(rPayments.map(p => String(p.id_pago || p.id)));
-            const unverifiedLocal = localPending.filter(lp => !serverIds.has(String(lp.id_pago || lp.id)));
-            rPayments = [...unverifiedLocal, ...rPayments];
+          const st = (r.statusRaw || r.status || '').toString().toUpperCase();
+          const ep = (r.estado_pago || r.estadoPago || '').toString().toUpperCase();
+          const totAmount = r.quotation ? parseFloat(r.quotation.total || r.quotation.monto_total || 0) : 0;
+          const totPaid = rPayments.reduce((sum, p) => sum + parseFloat(p.monto_pagado || p.monto || 0), 0);
+
+          if (st === 'PAGADA' || ep === 'COMPLETADO' || (totAmount > 0 && totPaid >= totAmount - 0.01)) {
+            if (r.id) localStorage.removeItem(`sigesto_pending_payments_${r.id}`);
+            if (r.idNumeric) localStorage.removeItem(`sigesto_pending_payments_${r.idNumeric}`);
+          } else {
+            const localPending = JSON.parse(localStorage.getItem(`sigesto_pending_payments_${r.id}`) || localStorage.getItem(`sigesto_pending_payments_${r.idNumeric}`) || '[]');
+            if (Array.isArray(localPending) && localPending.length > 0) {
+              const serverIds = new Set(rPayments.map(p => String(p.id_pago || p.id)));
+              const unverifiedLocal = localPending.filter(lp => !serverIds.has(String(lp.id_pago || lp.id)));
+              rPayments = [...unverifiedLocal, ...rPayments];
+            }
           }
         } catch (e) {}
 
@@ -211,22 +229,48 @@ const Dashboard = () => {
       });
 
       setRequests(enriched);
-      setDashboardError(null);
+      if (!isBackground) setDashboardError(null);
     } catch (err) {
-      console.error('Error fetching requests:', err);
-      const debugInfo = `[Debug Info - HTTP: ${err.status || 'N/A'}, Msg: ${err.message}]`;
-      if (err.isTemporaryUnavailable || err.isUnsupported) {
-        setDashboardError(`No se pudo cargar el historial de solicitudes. El servicio no está disponible en este momento. ${debugInfo}`);
-      } else {
-        setDashboardError(`${err.message || 'Error al conectar con el servidor.'} ${debugInfo}`);
+      if (!isBackground) {
+        console.error('Error fetching requests:', err);
+        const debugInfo = `[Debug Info - HTTP: ${err.status || 'N/A'}, Msg: ${err.message}]`;
+        if (err.isTemporaryUnavailable || err.isUnsupported) {
+          setDashboardError(`No se pudo cargar el historial de solicitudes. El servicio no está disponible en este momento. ${debugInfo}`);
+        } else {
+          setDashboardError(`${err.message || 'Error al conectar con el servidor.'} ${debugInfo}`);
+        }
       }
     } finally {
-      setLoading(false);
+      if (!isBackground) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    fetchRequests();
+    let isMounted = true;
+    fetchRequests(false);
+
+    // Sincronización automática en segundo plano cada 10 segundos sin recarga
+    const intervalId = setInterval(() => {
+      if (isMounted && document.visibilityState === 'visible') {
+        fetchRequests(true);
+      }
+    }, 10000);
+
+    // Sincronizar de inmediato cuando la pestaña recupera el foco
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isMounted) {
+        fetchRequests(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const handleCancelRequest = async (requestId) => {
@@ -266,7 +310,7 @@ const Dashboard = () => {
         </span>
       );
     }
-    if (opIdx === 4 || sRaw.includes('FINALIZAD') || sRaw.includes('TERMINAD') || sRaw.includes('COMPLETAD')) {
+    if (opIdx === 4 || sRaw.includes('FINALIZAD') || sRaw.includes('TERMINAD') || sRaw.includes('COMPLETAD') || sRaw.includes('CONCLUID')) {
       return (
         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
           <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Finalizado
@@ -412,9 +456,21 @@ const Dashboard = () => {
               <div className="bg-white/90 backdrop-blur-lg border border-slate-200/60 rounded-3xl p-6 md:p-8 shadow-soft">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                   <div>
-                    <h3 className="font-display font-bold text-lg text-slate-900 flex items-center">
-                      Servicio Activo
-                    </h3>
+                    <div className="flex items-center space-x-2.5">
+                      <h3 className="font-display font-bold text-lg text-slate-900 flex items-center">
+                        Servicio Activo
+                      </h3>
+                      <span 
+                        className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200/60 shadow-2xs cursor-help transition-all duration-300"
+                        title="Actualizándose automáticamente en tiempo real"
+                      >
+                        <span className="relative flex h-1.5 w-1.5 mr-1.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                        </span>
+                        En vivo
+                      </span>
+                    </div>
                     <p className="text-xs text-slate-400 mt-1">{featuredRequest.type}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -460,17 +516,17 @@ const Dashboard = () => {
                           {idx < OPERATIONAL_STAGES.length - 1 && (
                             <div className="hidden sm:block absolute left-[50%] top-4 w-[100%] h-0.5 bg-slate-100">
                               <div
-                                className="bg-indigo-500 h-full transition-all duration-500"
+                                className="bg-indigo-500 h-full transition-all duration-700 ease-in-out"
                                 style={{ width: isCompleted ? '100%' : isActive ? '50%' : '0%' }}
                               ></div>
                             </div>
                           )}
                           <div
-                            className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 z-10 transition-soft ${
+                            className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 z-10 transition-all duration-500 ${
                               isActive
-                                ? 'bg-indigo-600 text-white shadow-soft ring-4 ring-indigo-500/20'
+                                ? 'bg-indigo-600 text-white shadow-soft ring-4 ring-indigo-500/20 scale-105'
                                 : isCompleted
-                                ? 'bg-emerald-500 text-white'
+                                ? 'bg-emerald-500 text-white shadow-soft ring-4 ring-emerald-500/20'
                                 : 'bg-slate-100 text-slate-400 border border-slate-200'
                             }`}
                           >
@@ -478,7 +534,7 @@ const Dashboard = () => {
                           </div>
                           <div className="ml-3 sm:ml-0 sm:text-center mt-0 sm:mt-3 text-left">
                             <h4
-                              className={`text-xs font-bold ${
+                              className={`text-xs font-bold transition-colors duration-500 ${
                                 isActive ? 'text-indigo-600' : isCompleted ? 'text-slate-800' : 'text-slate-400'
                               }`}
                             >

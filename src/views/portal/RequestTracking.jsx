@@ -33,9 +33,9 @@ const OPERATIONAL_STAGES = [
 const getOperationalStageIndex = (rawStatus, requestObj = null) => {
   const s = (rawStatus || requestObj?.statusRaw || requestObj?.estado_operativo || requestObj?.estado || requestObj?.status || '').toString().toUpperCase();
   if (['CANCELADA', 'CANCELADO', 'ANULADA', 'RECHAZADA'].includes(s) || s.includes('CANCELAD') || s.includes('RECHAZAD') || s.includes('ANULAD')) return -1;
-  if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'PAGADA', 'PAGADO'].includes(s) || s.includes('FINALIZAD') || s.includes('TERMINAD') || s.includes('COMPLETAD')) return 4;
+  if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'CONCLUIDA'].includes(s) || s.includes('FINALIZAD') || s.includes('TERMINAD') || s.includes('COMPLETAD') || s.includes('CONCLUID')) return 4;
   if (['EN_PROCESO', 'EN CURSO', 'PROCESO', 'EN_EJECUCION'].includes(s) || s.includes('PROCESO') || s.includes('CURSO') || s.includes('EJECUCION')) return 3;
-  if (['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO'].includes(s) || s.includes('COTIZAD') || s.includes('REVISION') || s.includes('REVICION') || s.includes('APROBAD')) return 2;
+  if (['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO', 'PAGADA', 'PAGADO'].includes(s) || s.includes('COTIZAD') || s.includes('REVISION') || s.includes('REVICION') || s.includes('APROBAD') || s.includes('PAGAD')) return 2;
 
   let hasPaymentsOrReview = requestObj?.hasInReviewPayment === true ||
     (Array.isArray(requestObj?.payments) && requestObj.payments.length > 0) ||
@@ -65,11 +65,11 @@ const getVisualOperationalStageIndex = (requestObj, rawIndex, paymentsList = [])
   const timeline = Array.isArray(requestObj.timeline) ? requestObj.timeline : (Array.isArray(requestObj.historial) ? requestObj.historial : []);
   timeline.forEach(item => {
     const s = (item.estado || item.status || item.titulo || item.title || item.descripcion || '').toString().toUpperCase();
-    if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'PAGADA', 'PAGADO'].some(k => s.includes(k))) {
+    if (['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'CONCLUIDA'].some(k => s.includes(k))) {
       if (maxIndex < 4) maxIndex = 4;
     } else if (['EN_PROCESO', 'EN CURSO', 'PROCESO', 'EN_EJECUCION'].some(k => s.includes(k))) {
       if (maxIndex < 3) maxIndex = 3;
-    } else if (['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO'].some(k => s.includes(k))) {
+    } else if (['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO', 'PAGADA', 'PAGADO'].some(k => s.includes(k))) {
       if (maxIndex < 2) maxIndex = 2;
     } else if (['ASIGNADA', 'ASIGNADO'].some(k => s.includes(k))) {
       if (maxIndex < 1) maxIndex = 1;
@@ -78,8 +78,8 @@ const getVisualOperationalStageIndex = (requestObj, rawIndex, paymentsList = [])
 
   const allPays = Array.isArray(paymentsList) && paymentsList.length > 0 ? paymentsList : (Array.isArray(requestObj.payments) ? requestObj.payments : (Array.isArray(requestObj.pagos) ? requestObj.pagos : []));
   const hasVerifiedPayment = allPays.some(p => ['VERIFICADO', 'APROBADO', 'COMPLETADO'].includes((p.estado || '').toString().toUpperCase()));
-  if (hasVerifiedPayment && maxIndex < 3) {
-    maxIndex = 3;
+  if (hasVerifiedPayment && maxIndex < 2) {
+    maxIndex = 2;
   }
 
   const reqId = requestObj.id || requestObj.idNumeric || requestObj.uuid_solicitud || 'unknown';
@@ -87,7 +87,12 @@ const getVisualOperationalStageIndex = (requestObj, rawIndex, paymentsList = [])
     const storageKey = `sigesto_visual_max_op_stage_${reqId}`;
     try {
       const storedMax = Number(localStorage.getItem(storageKey) || 0);
-      if (!isNaN(storedMax) && storedMax > maxIndex && storedMax <= 4) {
+      const rawS = (requestObj.statusRaw || requestObj.estado_operativo || requestObj.estado || requestObj.status || '').toString().toUpperCase();
+      const isTrulyFinal = ['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'CONCLUIDA'].some(k => rawS.includes(k)) || timeline.some(t => ['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'CONCLUIDA'].some(k => (t.estado || t.status || t.titulo || '').toString().toUpperCase().includes(k)));
+
+      if (storedMax === 4 && !isTrulyFinal) {
+        localStorage.setItem(storageKey, String(maxIndex));
+      } else if (!isNaN(storedMax) && storedMax > maxIndex && storedMax <= (isTrulyFinal ? 4 : 3)) {
         maxIndex = storedMax;
       } else if (maxIndex > storedMax) {
         localStorage.setItem(storageKey, String(maxIndex));
@@ -110,7 +115,7 @@ const getOperationalBadge = (request) => {
       </span>
     );
   }
-  if (opIdx === 4 || ['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'PAGADA', 'PAGADO'].includes(sRaw)) {
+  if (opIdx === 4 || ['FINALIZADA', 'FINALIZADO', 'COMPLETADA', 'TERMINADA', 'CONCLUIDA'].includes(sRaw)) {
     return (
       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
         Finalizado
@@ -124,7 +129,7 @@ const getOperationalBadge = (request) => {
       </span>
     );
   }
-  if (opIdx === 2 || ['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO'].includes(sRaw)) {
+  if (opIdx === 2 || ['COTIZADA', 'REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION', 'REVISION', 'PENDIENTE_PAGO', 'APROBADA', 'APROBADO', 'PAGADA', 'PAGADO'].includes(sRaw)) {
     return (
       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 uppercase">
         Cotizado
@@ -223,26 +228,75 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
   const totalPaid = Math.max(propTotalPaid || 0, totalPaidFromPayments, parseFloat(request?.total_pagado || request?.monto_pagado || request?.totalPagado || 0));
   const remainingBalance = Math.max(0, totalAmount - totalPaid);
 
-  const inReviewList = allPayments.filter(p => 
-    ['EN REVISION', 'EN_REVISION', 'REVISION', 'PENDIENTE', 'PENDIENTE_VALIDACION', 'VERIFICANDO', 'PENDIENTE DE VALIDACION', 'REVISION_PAGO', 'REVICION_PAGO'].includes((p.estado || '').toString().toUpperCase())
-  );
+  const activePayments = allPayments.filter(p => !['RECHAZADO', 'CANCELADO'].includes((p.estado || '').toString().toUpperCase()));
 
-  if (inReviewList.length === 0 && (['REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION'].includes((request?.statusRaw || request?.estado_pago || request?.estadoPago || '').toString().toUpperCase()))) {
-    const fallbackMonto = totalPaid <= 0.01 && totalAmount > 0 ? totalAmount * 0.30 : remainingBalance > 0 ? remainingBalance : totalAmount;
-    inReviewList.push({
-      id_pago: 'in-review-server',
-      concepto: totalPaid <= 0.01 ? 'Adelanto del Servicio' : 'Liquidación del Saldo',
-      monto_pagado: fallbackMonto,
-      metodo_pago: 'Comprobante registrado',
-      estado: 'EN REVISION'
-    });
-  }
+  const getPaymentVerificationStatus = (pago, index = 0, activeList = activePayments) => {
+    const pEstado = (pago.estado || '').toString().toUpperCase();
+    if (['RECHAZADO', 'CANCELADO'].includes(pEstado)) {
+      return { isRejected: true, isVerified: false, isPending: false };
+    }
+    if (['VERIFICADO', 'APROBADO', 'COMPLETADO', 'PAGADO', 'CONFIRMADO', 'VALIDADO'].includes(pEstado)) {
+      return { isRejected: false, isVerified: true, isPending: false };
+    }
+
+    const reqEstado = (request?.statusRaw || request?.estado_operativo || request?.estado || request?.status || '').toString().toUpperCase();
+    const reqEstadoPago = (request?.estado_pago || request?.estadoPago || 'PENDIENTE').toString().toUpperCase();
+
+    // 1. Si la orden está globalmente PAGADA o COMPLETADO por administración, todos los pagos no rechazados se consideran aprobados
+    if (reqEstado === 'PAGADA' || reqEstadoPago === 'COMPLETADO') {
+      return { isRejected: false, isVerified: true, isPending: false };
+    }
+
+    // 2. Un pago registrado localmente o en curso que no sea explícitamente verificado está En Revisión
+    const isLocal = String(pago.id_pago || pago.id || '').startsWith('local-') || pago.isLocalPending;
+    if (isLocal) {
+      return { isRejected: false, isVerified: false, isPending: true };
+    }
+
+    const concepto = (pago.concepto || '').toLowerCase();
+    const isRestanteConcept = concepto.includes('saldo') || concepto.includes('liquid') || concepto.includes('restante');
+    if (isRestanteConcept && reqEstado !== 'PAGADA' && reqEstadoPago !== 'COMPLETADO') {
+      return { isRejected: false, isVerified: false, isPending: true };
+    }
+
+    // 3. Si hay más de 1 pago (ej. ya se dio un adelanto y ahora se mandó el segundo pago del saldo),
+    // el primer pago histórico (el más antiguo) ya fue aprobado para que el servicio haya continuado.
+    if (activeList.length > 1 || ['APROBADA', 'EN_PROCESO'].includes(reqEstado) || reqEstadoPago === 'ADELANTO') {
+      if (activeList.length > 1) {
+        const oldestPayment = activeList.reduce((oldest, current) => {
+          const idOld = parseFloat(oldest.id_pago || oldest.id || 999999999);
+          const idCur = parseFloat(current.id_pago || current.id || 999999999);
+          if (!isNaN(idOld) && !isNaN(idCur) && idOld !== 999999999 && idCur !== 999999999) {
+            return idCur < idOld ? current : oldest;
+          }
+          return activeList[activeList.length - 1];
+        }, activeList[0]);
+
+        if (pago === oldestPayment || (pago.id_pago && String(pago.id_pago) === String(oldestPayment.id_pago))) {
+          return { isRejected: false, isVerified: true, isPending: false };
+        } else {
+          return { isRejected: false, isVerified: false, isPending: true };
+        }
+      }
+
+      if (['APROBADA', 'EN_PROCESO'].includes(reqEstado) || reqEstadoPago === 'ADELANTO') {
+        return { isRejected: false, isVerified: true, isPending: false };
+      }
+    }
+
+    return { isRejected: false, isVerified: false, isPending: true };
+  };
+
+  const verifiedPayments = allPayments.filter((p, i) => getPaymentVerificationStatus(p, i).isVerified);
+  const inReviewPayments = allPayments.filter((p, i) => getPaymentVerificationStatus(p, i).isPending);
+  const verifiedTotalPaid = verifiedPayments.reduce((sum, p) => sum + parseFloat(p.monto_pagado || p.monto || 0), 0);
 
   const getFinancialStatusInfo = () => {
     const estado = (request?.statusRaw || request?.estado_operativo || request?.estado || request?.status || '').toString().toUpperCase();
     let estadoPago = (request?.estado_pago || request?.estadoPago || 'PENDIENTE').toString().toUpperCase();
 
-    if ((totalAmount > 0 && totalPaid >= totalAmount - 0.01) || estado === 'PAGADA' || estadoPago === 'COMPLETADO') {
+    // 1. Si el servicio está 100% pagado y aprobado/liquidado por administración
+    if (estado === 'PAGADA' || estadoPago === 'COMPLETADO' || (totalAmount > 0 && verifiedTotalPaid >= totalAmount - 0.01 && inReviewPayments.length === 0)) {
       return {
         key: 'PAGADO',
         label: 'Pagado / Liquidado',
@@ -254,7 +308,34 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
       };
     }
 
-    if (totalPaid > 0.01 || ['APROBADA', 'EN_PROCESO'].includes(estado) || estadoPago === 'ADELANTO') {
+    // 2. Si ya hay pagos previos aprobados (o más de un pago registrado) y el saldo restante está en revisión
+    if ((verifiedTotalPaid > 0.01 || ['APROBADA', 'EN_PROCESO'].includes(estado) || estadoPago === 'ADELANTO' || activePayments.length > 1) && inReviewPayments.length > 0) {
+      return {
+        key: 'EN_REVISION_FINAL',
+        label: 'Liquidación en Revisión',
+        badgeClass: 'bg-sky-50 text-sky-700 border-sky-200',
+        dotClass: 'bg-sky-500 animate-pulse',
+        cardBorder: 'border-sky-200/80',
+        iconBg: 'bg-sky-50 text-sky-600 border-sky-100',
+        description: 'El comprobante de pago por el saldo restante se encuentra en revisión. Al ser aprobado por administración, el servicio pasará a estado 100% Pagado / Liquidado.'
+      };
+    }
+
+    // 3. Si se envió el primer pago (o pago total en un paso) y está en revisión (adelanto en revisión)
+    if (inReviewPayments.length > 0 && verifiedTotalPaid <= 0.01 && !['APROBADA', 'EN_PROCESO'].includes(estado) && estadoPago !== 'ADELANTO') {
+      return {
+        key: 'EN_REVISION_ADELANTO',
+        label: 'Adelanto en Revisión',
+        badgeClass: 'bg-sky-50 text-sky-700 border-sky-200',
+        dotClass: 'bg-sky-500 animate-pulse',
+        cardBorder: 'border-sky-200/80',
+        iconBg: 'bg-sky-50 text-sky-600 border-sky-100',
+        description: 'Su comprobante de pago del adelanto se encuentra en revisión. Al ser aprobado por el administrador, se confirmará su orden.'
+      };
+    }
+
+    // 4. Si el adelanto ya fue aprobado por administración y aún falta liquidar el saldo restante
+    if (verifiedTotalPaid > 0.01 || ['APROBADA', 'EN_PROCESO'].includes(estado) || estadoPago === 'ADELANTO') {
       return {
         key: 'ADELANTO',
         label: 'Adelanto Confirmado',
@@ -262,22 +343,11 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
         dotClass: 'bg-amber-500',
         cardBorder: 'border-amber-200/80',
         iconBg: 'bg-amber-50 text-amber-600 border-amber-100',
-        description: 'Adelanto registrado. Saldo pendiente al finalizar la asistencia.'
+        description: 'El adelanto fue aprobado por el administrador. El saldo restante se abonará al finalizar la asistencia técnica.'
       };
     }
 
-    if (inReviewList.length > 0 && totalAmount <= 0) {
-      return {
-        key: 'EN_REVISION',
-        label: 'Pago en Revisión',
-        badgeClass: 'bg-sky-50 text-sky-700 border-sky-200',
-        dotClass: 'bg-sky-500 animate-pulse',
-        cardBorder: 'border-sky-200/80',
-        iconBg: 'bg-sky-50 text-sky-600 border-sky-100',
-        description: 'Su comprobante de pago ha sido registrado exitosamente y se encuentra en proceso de validación por nuestro equipo de finanzas.'
-      };
-    }
-
+    // 5. Por defecto / pendiente de pago
     return {
       key: 'PENDIENTE',
       label: totalAmount > 0 ? 'Pendiente de Pago' : 'Por Cotizar / Pendiente de Pago',
@@ -285,11 +355,32 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
       dotClass: 'bg-slate-400',
       cardBorder: 'border-slate-200/70',
       iconBg: 'bg-slate-100 text-slate-600 border-slate-200',
-      description: 'En espera de confirmación o registro de pago.'
+      description: 'En espera de confirmación o registro del comprobante de pago para el adelanto.'
     };
   };
 
   const statusInfo = getFinancialStatusInfo();
+
+  if (statusInfo.key === 'PAGADO') {
+    try {
+      if (request?.id) localStorage.removeItem(`sigesto_pending_payments_${request.id}`);
+      if (request?.idNumeric) localStorage.removeItem(`sigesto_pending_payments_${request.idNumeric}`);
+    } catch (e) {}
+  }
+
+  const inReviewList = inReviewPayments;
+
+  if (inReviewList.length === 0 && statusInfo.key !== 'PAGADO' && statusInfo.key !== 'ADELANTO' && (['REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION'].includes((request?.statusRaw || request?.estado_pago || request?.estadoPago || '').toString().toUpperCase()))) {
+    const fallbackMonto = totalPaid <= 0.01 && totalAmount > 0 ? totalAmount * 0.30 : remainingBalance > 0 ? remainingBalance : totalAmount;
+    inReviewList.push({
+      id_pago: 'in-review-server',
+      concepto: totalPaid <= 0.01 ? 'Adelanto del Servicio' : 'Liquidación del Saldo',
+      monto_pagado: fallbackMonto,
+      metodo_pago: 'Comprobante registrado',
+      estado: 'EN REVISION'
+    });
+  }
+
   const progressPercent = totalAmount > 0 ? Math.min(100, Math.round((totalPaid / totalAmount) * 100)) : 0;
 
   return (
@@ -316,10 +407,12 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
               {statusInfo.label}
             </span>
 
-            {/* Mensaje secundario con detalle del pago exacto en revisión */}
+            {/* Mensaje secundario con detalle solo de los pagos que están en revisión */}
             {inReviewList.map((p, idx) => {
               const montoPago = parseFloat(p.monto_pagado || p.monto || 0);
-              const conceptoPago = p.concepto || (totalAmount > 0 && montoPago >= totalAmount * 0.99 ? 'Liquidación Total (100%)' : totalPaid > 0 ? 'Pago de Saldo' : 'Adelanto del Servicio');
+              const isVerifiedItem = getPaymentVerificationStatus(p, idx, activePayments).isVerified;
+              if (isVerifiedItem) return null;
+              const conceptoPago = p.concepto || (activePayments.length > 1 || statusInfo.key === 'EN_REVISION_FINAL' || verifiedTotalPaid > 0.01 ? 'Pago de Saldo' : 'Adelanto del Servicio');
               return (
                 <span key={idx} className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-sky-50 text-sky-700 border border-sky-200 shadow-sm animate-pulse">
                   <Clock className="w-3.5 h-3.5 mr-1.5 text-sky-600 shrink-0" />
@@ -329,9 +422,7 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
             })}
           </div>
           <p className="text-xs text-slate-500 mt-2.5 leading-relaxed">
-            {inReviewList.length > 0 && statusInfo.key !== 'PAGADO'
-              ? `Su comprobante por S/ ${inReviewList.reduce((acc, p) => acc + parseFloat(p.monto_pagado || p.monto || 0), 0).toFixed(2)} (${inReviewList.map(p => p.concepto || (parseFloat(p.monto_pagado || p.monto || 0) >= totalAmount * 0.99 ? 'Liquidación Total' : totalPaid > 0 ? 'Pago de Saldo' : 'Adelanto')).join(', ')}) se encuentra actualmente en verificación por administración.`
-              : statusInfo.description}
+            {statusInfo.description}
           </p>
         </div>
       </div>
@@ -454,7 +545,7 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
               )}
             </div>
 
-            {payments.length === 0 ? (
+            {allPayments.length === 0 ? (
               <div className="text-center p-3 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
                 <p className="text-[11px] font-semibold text-slate-500">Aún no se ha registrado el comprobante de pago.</p>
               </div>
@@ -462,10 +553,15 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
               <div className="space-y-2 pt-1 border-t border-slate-100">
                 <h4 className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Historial de Transacciones</h4>
                 <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                  {payments.map(pago => {
-                    const isVerified = ['VERIFICADO', 'APROBADO', 'COMPLETADO'].includes((pago.estado || '').toString().toUpperCase());
-                    const isRejected = ['RECHAZADO', 'CANCELADO'].includes((pago.estado || '').toString().toUpperCase());
-                    const isPending = !isVerified && !isRejected;
+                  {allPayments.map((pago, idx) => {
+                    const verStatus = getPaymentVerificationStatus(pago, idx, activePayments);
+                    const isRejected = verStatus.isRejected;
+                    const isVerified = verStatus.isVerified;
+                    const isPending = verStatus.isPending;
+                    const estadoLabel = isVerified
+                      ? ((['EN REVISION', 'EN_REVISION', 'PENDIENTE', 'REVISION', 'VERIFICANDO', 'PENDIENTE DE VALIDACION', 'REVISION_PAGO', 'REVICION_PAGO', ''].includes((pago.estado || '').toString().toUpperCase()) || !pago.estado) ? 'Aprobado' : pago.estado)
+                      : (isPending ? 'En Revisión' : pago.estado || 'Pendiente');
+
                     return (
                       <div key={pago.id_pago || pago.id || Math.random()} className="flex items-center justify-between p-2.5 bg-slate-50/80 border border-slate-200/60 rounded-xl text-xs">
                         <div className="flex items-center space-x-2">
@@ -488,7 +584,7 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
                           isRejected ? 'bg-rose-50 text-rose-600 border-rose-100' :
                           'bg-sky-50 text-sky-700 border-sky-200'
                         }`}>
-                          {isPending ? 'En Revisión' : pago.estado || 'Pendiente'}
+                          {estadoLabel}
                         </span>
                       </div>
                     );
@@ -514,20 +610,32 @@ const OperationalStepper = ({ request, currentOperationalIndex }) => {
     <div className="w-full h-full bg-white/95 backdrop-blur-lg border border-slate-200/70 rounded-3xl p-6 md:p-8 shadow-soft flex flex-col justify-between">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
         <div className="flex items-center space-x-3">
-          <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100">
+          <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100 relative">
             <Activity className="w-4.5 h-4.5" />
           </div>
           <div>
-            <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-400">
-              Flujo Operativo
-            </h3>
+            <div className="flex items-center space-x-2">
+              <h3 className="font-display font-bold text-xs uppercase tracking-wider text-slate-400">
+                Flujo Operativo
+              </h3>
+              <span 
+                className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200/60 shadow-2xs cursor-help transition-all duration-300"
+                title="Sincronización automática en tiempo real activa"
+              >
+                <span className="relative flex h-1.5 w-1.5 mr-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                </span>
+                En vivo
+              </span>
+            </div>
             <p className="font-extrabold text-slate-800 text-sm md:text-base">
               Progreso Técnico de la Solicitud
             </p>
           </div>
         </div>
         <div className="flex items-center">
-          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border ${
+          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border transition-all duration-500 ${
             currentOperationalIndex === OPERATIONAL_STAGES.length - 1
               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
               : 'bg-indigo-50 text-indigo-700 border-indigo-100'
@@ -551,15 +659,15 @@ const OperationalStepper = ({ request, currentOperationalIndex }) => {
               {idx < OPERATIONAL_STAGES.length - 1 && (
                 <div className="hidden md:block absolute left-[50%] top-4 w-[100%] h-0.5 bg-slate-100">
                   <div
-                    className={`${isCompleted || idx < currentOperationalIndex ? 'bg-emerald-500' : 'bg-indigo-500'} h-full transition-all duration-500`}
+                    className={`${isCompleted || idx < currentOperationalIndex ? 'bg-emerald-500' : 'bg-indigo-500'} h-full transition-all duration-700 ease-in-out`}
                     style={{ width: isCompleted || idx < currentOperationalIndex ? '100%' : isActive ? '50%' : '0%' }}
                   ></div>
                 </div>
               )}
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 z-10 transition-soft ${
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 z-10 transition-all duration-500 ${
                   isActive
-                    ? 'bg-indigo-600 text-white shadow-soft ring-4 ring-indigo-500/20'
+                    ? 'bg-indigo-600 text-white shadow-soft ring-4 ring-indigo-500/20 scale-105'
                     : isCompleted
                     ? 'bg-emerald-500 text-white shadow-soft ring-4 ring-emerald-500/20'
                     : 'bg-slate-100 text-slate-400 border border-slate-200'
@@ -569,7 +677,7 @@ const OperationalStepper = ({ request, currentOperationalIndex }) => {
               </div>
               <div className="ml-4 md:ml-0 md:text-center mt-0 md:mt-3 text-left">
                 <h4
-                  className={`text-xs font-bold ${
+                  className={`text-xs font-bold transition-colors duration-500 ${
                     isActive ? 'text-indigo-600' : isCompleted ? 'text-slate-800' : 'text-slate-400'
                   }`}
                 >
@@ -771,8 +879,11 @@ const RequestTracking = () => {
     setTimeout(() => setCopiedField(''), 2000);
   };
 
-  // Carga de datos de la solicitud
-  const loadRequest = async () => {
+  // Carga de datos de la solicitud con soporte de sincronización en vivo
+  const loadRequest = async (isBackground = false) => {
+    if (!isBackground) {
+      setLoading(true);
+    }
     try {
       const data = await api.requests.getById(id);
       setRequest(data);
@@ -793,9 +904,9 @@ const RequestTracking = () => {
         console.warn("No se pudieron cargar evidencias", evErr);
         if (evErr.isUnsupported) {
           setIsEvidencesSupported(false);
-        } else if (evErr.isTemporaryUnavailable) {
+        } else if (evErr.isTemporaryUnavailable && !isBackground) {
           setEvidencesError('Las evidencias no están disponibles temporalmente.');
-        } else {
+        } else if (!isBackground) {
           setEvidencesError('No se pudieron cargar las evidencias adjuntas.');
         }
       }
@@ -809,13 +920,22 @@ const RequestTracking = () => {
         console.warn("No se pudieron cargar los pagos, aplicando inferencia si es posible", payErr);
       }
 
-      // Recuperar pagos en revisión de localStorage para reflejar al instante el pago tras registrarlo
+      // Recuperar pagos en revisión de localStorage o purgarlos si la solicitud ya está pagada al 100%
       try {
-        const localPending = JSON.parse(localStorage.getItem(`sigesto_pending_payments_${id}`) || '[]');
-        if (Array.isArray(localPending) && localPending.length > 0) {
-          const serverIds = new Set(fetchedPayments.map(p => String(p.id_pago || p.id)));
-          const unverifiedLocal = localPending.filter(lp => !serverIds.has(String(lp.id_pago || lp.id)));
-          fetchedPayments = [...unverifiedLocal, ...fetchedPayments];
+        const st = (data.statusRaw || data.estado_operativo || data.estado || data.status || '').toString().toUpperCase();
+        const ep = (data.estado_pago || data.estadoPago || '').toString().toUpperCase();
+        const totAmount = data.quotation ? parseFloat(data.quotation.total || data.quotation.monto_total || 0) : 0;
+        const totPaid = fetchedPayments.reduce((sum, p) => sum + parseFloat(p.monto_pagado || p.monto || 0), 0);
+
+        if (st === 'PAGADA' || ep === 'COMPLETADO' || (totAmount > 0 && totPaid >= totAmount - 0.01)) {
+          localStorage.removeItem(`sigesto_pending_payments_${id}`);
+        } else {
+          const localPending = JSON.parse(localStorage.getItem(`sigesto_pending_payments_${id}`) || '[]');
+          if (Array.isArray(localPending) && localPending.length > 0) {
+            const serverIds = new Set(fetchedPayments.map(p => String(p.id_pago || p.id)));
+            const unverifiedLocal = localPending.filter(lp => !serverIds.has(String(lp.id_pago || lp.id)));
+            fetchedPayments = [...unverifiedLocal, ...fetchedPayments];
+          }
         }
       } catch (e) {
         console.warn("Error leyendo pagos locales en revisión", e);
@@ -841,15 +961,42 @@ const RequestTracking = () => {
       }
 
       setPayments(fetchedPayments);
+      if (!isBackground) setError('');
     } catch (err) {
-      setError(err.message || 'Error al obtener la solicitud.');
+      if (!isBackground) {
+        setError(err.message || 'Error al obtener la solicitud.');
+      }
     } finally {
-      setLoading(false);
+      if (!isBackground) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadRequest();
+    let isMounted = true;
+    loadRequest(false);
+
+    // Sincronización automática en segundo plano cada 8 segundos para que el flujo operativo se actualice sin recargar
+    const intervalId = setInterval(() => {
+      if (isMounted && document.visibilityState === 'visible') {
+        loadRequest(true);
+      }
+    }, 8000);
+
+    // Actualizar de inmediato cuando el usuario regresa a la pestaña del navegador
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isMounted) {
+        loadRequest(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [id]);
 
   // Cancelar (Soft delete)
@@ -1138,6 +1285,13 @@ const RequestTracking = () => {
               <span className="text-slate-300 hidden sm:inline">•</span>
               {getOperationalBadge(reqWithPayments || request)}
               {getFinancialBadge(request, totalAmount, totalPaid, payments)}
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50/80 text-emerald-600 border border-emerald-200/50 shadow-2xs ml-1" title="Sincronización automática en tiempo real activa">
+                <span className="relative flex h-1.5 w-1.5 mr-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                </span>
+                Sincronización en vivo
+              </span>
             </div>
           </div>
         </div>
