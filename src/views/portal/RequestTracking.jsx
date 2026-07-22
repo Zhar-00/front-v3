@@ -229,6 +229,8 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
   const remainingBalance = Math.max(0, totalAmount - totalPaid);
 
   const activePayments = allPayments.filter(p => !['RECHAZADO', 'CANCELADO'].includes((p.estado || '').toString().toUpperCase()));
+  const progressedStates = ['APROBADA', 'EN_PROCESO', 'FINALIZADA', 'COMPLETADO', 'COMPLETADA', 'TERMINADA', 'ENTREGADA', 'LISTO'];
+  const completedFinancialStates = ['PAGADA', 'PAGADO', 'COMPLETADO', 'COMPLETADA', 'FINALIZADA', 'FINALIZADO', 'TERMINADA', 'TERMINADO', 'ENTREGADA', 'ENTREGADO', 'LISTO', 'CONFIRMADO', 'LIQUIDADO', 'TOTAL'];
 
   const getPaymentVerificationStatus = (pago, index = 0, activeList = activePayments) => {
     const pEstado = (pago.estado || '').toString().toUpperCase();
@@ -242,8 +244,8 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
     const reqEstado = (request?.statusRaw || request?.estado_operativo || request?.estado || request?.status || '').toString().toUpperCase();
     const reqEstadoPago = (request?.estado_pago || request?.estadoPago || 'PENDIENTE').toString().toUpperCase();
 
-    // 1. Si la orden está globalmente PAGADA o COMPLETADO por administración, todos los pagos no rechazados se consideran aprobados
-    if (reqEstado === 'PAGADA' || reqEstadoPago === 'COMPLETADO') {
+    // 1. Si la orden está en estado FINALIZADA o PAGADA / COMPLETADO por administración, todos los pagos no rechazados se consideran aprobados
+    if (completedFinancialStates.includes(reqEstado) || completedFinancialStates.includes(reqEstadoPago)) {
       return { isRejected: false, isVerified: true, isPending: false };
     }
 
@@ -255,22 +257,24 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
 
     const concepto = (pago.concepto || '').toLowerCase();
     const isRestanteConcept = concepto.includes('saldo') || concepto.includes('liquid') || concepto.includes('restante');
-    if (isRestanteConcept && reqEstado !== 'PAGADA' && reqEstadoPago !== 'COMPLETADO') {
+    if (isRestanteConcept && !completedFinancialStates.includes(reqEstado) && !completedFinancialStates.includes(reqEstadoPago)) {
       return { isRejected: false, isVerified: false, isPending: true };
     }
 
     // 3. Si hay más de 1 pago (ej. ya se dio un adelanto y ahora se mandó el segundo pago del saldo),
     // el primer pago histórico (el más antiguo) ya fue aprobado para que el servicio haya continuado.
-    if (activeList.length > 1 || ['APROBADA', 'EN_PROCESO'].includes(reqEstado) || reqEstadoPago === 'ADELANTO') {
+    if (activeList.length > 1 || progressedStates.includes(reqEstado) || reqEstadoPago === 'ADELANTO') {
       if (activeList.length > 1) {
-        const oldestPayment = activeList.reduce((oldest, current) => {
-          const idOld = parseFloat(oldest.id_pago || oldest.id || 999999999);
-          const idCur = parseFloat(current.id_pago || current.id || 999999999);
-          if (!isNaN(idOld) && !isNaN(idCur) && idOld !== 999999999 && idCur !== 999999999) {
+        const serverPayments = activeList.filter(p => !String(p.id_pago || p.id || '').startsWith('local-') && !p.isLocalPending);
+        const candidates = serverPayments.length > 0 ? serverPayments : activeList;
+        const oldestPayment = candidates.reduce((oldest, current) => {
+          const idOld = parseFloat(oldest.id_pago || oldest.id);
+          const idCur = parseFloat(current.id_pago || current.id);
+          if (!isNaN(idOld) && !isNaN(idCur)) {
             return idCur < idOld ? current : oldest;
           }
-          return activeList[activeList.length - 1];
-        }, activeList[0]);
+          return oldest;
+        }, candidates[0]);
 
         if (pago === oldestPayment || (pago.id_pago && String(pago.id_pago) === String(oldestPayment.id_pago))) {
           return { isRejected: false, isVerified: true, isPending: false };
@@ -279,7 +283,7 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
         }
       }
 
-      if (['APROBADA', 'EN_PROCESO'].includes(reqEstado) || reqEstadoPago === 'ADELANTO') {
+      if (progressedStates.includes(reqEstado) || reqEstadoPago === 'ADELANTO') {
         return { isRejected: false, isVerified: true, isPending: false };
       }
     }
@@ -295,8 +299,8 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
     const estado = (request?.statusRaw || request?.estado_operativo || request?.estado || request?.status || '').toString().toUpperCase();
     let estadoPago = (request?.estado_pago || request?.estadoPago || 'PENDIENTE').toString().toUpperCase();
 
-    // 1. Si el servicio está 100% pagado y aprobado/liquidado por administración
-    if (estado === 'PAGADA' || estadoPago === 'COMPLETADO' || (totalAmount > 0 && verifiedTotalPaid >= totalAmount - 0.01 && inReviewPayments.length === 0)) {
+    // 1. Si el servicio está 100% pagado y liquidado por administración
+    if (completedFinancialStates.includes(estado) || completedFinancialStates.includes(estadoPago) || (totalAmount > 0 && verifiedTotalPaid >= totalAmount - 0.01 && inReviewPayments.length === 0)) {
       return {
         key: 'PAGADO',
         label: 'Pagado / Liquidado',
@@ -309,7 +313,7 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
     }
 
     // 2. Si ya hay pagos previos aprobados (o más de un pago registrado) y el saldo restante está en revisión
-    if ((verifiedTotalPaid > 0.01 || ['APROBADA', 'EN_PROCESO'].includes(estado) || estadoPago === 'ADELANTO' || activePayments.length > 1) && inReviewPayments.length > 0) {
+    if ((verifiedTotalPaid > 0.01 || progressedStates.includes(estado) || estadoPago === 'ADELANTO' || activePayments.length > 1) && inReviewPayments.length > 0) {
       return {
         key: 'EN_REVISION_FINAL',
         label: 'Liquidación en Revisión',
@@ -321,8 +325,22 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
       };
     }
 
-    // 3. Si se envió el primer pago (o pago total en un paso) y está en revisión (adelanto en revisión)
-    if (inReviewPayments.length > 0 && verifiedTotalPaid <= 0.01 && !['APROBADA', 'EN_PROCESO'].includes(estado) && estadoPago !== 'ADELANTO') {
+    // 3. Si se envió el pago total del servicio (100%) en un solo paso y está en revisión
+    const totalInReviewOrActive = activePayments.reduce((sum, p) => sum + parseFloat(p.monto_pagado || p.monto || 0), 0);
+    if (inReviewPayments.length > 0 && verifiedTotalPaid <= 0.01 && totalAmount > 0 && (totalPaid >= totalAmount - 0.01 || totalInReviewOrActive >= totalAmount - 0.01 || inReviewPayments.some(p => parseFloat(p.monto_pagado || p.monto || 0) >= totalAmount - 0.01)) && !progressedStates.includes(estado)) {
+      return {
+        key: 'EN_REVISION_TOTAL',
+        label: 'Pago en Revisión',
+        badgeClass: 'bg-sky-50 text-sky-700 border-sky-200',
+        dotClass: 'bg-sky-500 animate-pulse',
+        cardBorder: 'border-sky-200/80',
+        iconBg: 'bg-sky-50 text-sky-600 border-sky-100',
+        description: 'Su comprobante por el pago completo (100%) se encuentra en revisión. Al ser aprobado por administración, el servicio quedará confirmado y liquidado.'
+      };
+    }
+
+    // 4. Si se envió el primer pago como adelanto parcial y está en revisión (adelanto en revisión)
+    if (inReviewPayments.length > 0 && verifiedTotalPaid <= 0.01 && !progressedStates.includes(estado) && estadoPago !== 'ADELANTO') {
       return {
         key: 'EN_REVISION_ADELANTO',
         label: 'Adelanto en Revisión',
@@ -335,7 +353,7 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
     }
 
     // 4. Si el adelanto ya fue aprobado por administración y aún falta liquidar el saldo restante
-    if (verifiedTotalPaid > 0.01 || ['APROBADA', 'EN_PROCESO'].includes(estado) || estadoPago === 'ADELANTO') {
+    if (verifiedTotalPaid > 0.01 || progressedStates.includes(estado) || estadoPago === 'ADELANTO') {
       return {
         key: 'ADELANTO',
         label: 'Adelanto Confirmado',
@@ -372,9 +390,10 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
 
   if (inReviewList.length === 0 && statusInfo.key !== 'PAGADO' && statusInfo.key !== 'ADELANTO' && (['REVISION_PAGO', 'REVICION_PAGO', 'EN_REVISION'].includes((request?.statusRaw || request?.estado_pago || request?.estadoPago || '').toString().toUpperCase()))) {
     const fallbackMonto = totalPaid <= 0.01 && totalAmount > 0 ? totalAmount * 0.30 : remainingBalance > 0 ? remainingBalance : totalAmount;
+    const isFullPaymentFallback = statusInfo.key === 'EN_REVISION_TOTAL' || (totalAmount > 0 && (fallbackMonto >= totalAmount - 0.01 || totalPaid >= totalAmount - 0.01));
     inReviewList.push({
       id_pago: 'in-review-server',
-      concepto: totalPaid <= 0.01 ? 'Adelanto del Servicio' : 'Liquidación del Saldo',
+      concepto: isFullPaymentFallback ? 'Pago Completo' : totalPaid <= 0.01 ? 'Adelanto del Servicio' : 'Liquidación del Saldo',
       monto_pagado: fallbackMonto,
       metodo_pago: 'Comprobante registrado',
       estado: 'EN REVISION'
@@ -412,7 +431,12 @@ const FinancialStatusCard = ({ request, totalAmount, totalPaid: propTotalPaid, r
               const montoPago = parseFloat(p.monto_pagado || p.monto || 0);
               const isVerifiedItem = getPaymentVerificationStatus(p, idx, activePayments).isVerified;
               if (isVerifiedItem) return null;
-              const conceptoPago = p.concepto || (activePayments.length > 1 || statusInfo.key === 'EN_REVISION_FINAL' || verifiedTotalPaid > 0.01 ? 'Pago de Saldo' : 'Adelanto del Servicio');
+              const isFullPayment = statusInfo.key === 'EN_REVISION_TOTAL' || (totalAmount > 0 && (montoPago >= totalAmount - 0.01 || totalPaid >= totalAmount - 0.01));
+              const conceptoPago = isFullPayment
+                ? 'Pago Completo'
+                : (p.concepto && !['TRANSFERENCIA', 'ADELANTO DEL SERVICIO'].includes(p.concepto.toUpperCase())
+                    ? p.concepto
+                    : (activePayments.length > 1 || statusInfo.key === 'EN_REVISION_FINAL' || verifiedTotalPaid > 0.01 ? 'Pago de Saldo' : 'Adelanto del Servicio'));
               return (
                 <span key={idx} className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-sky-50 text-sky-700 border border-sky-200 shadow-sm animate-pulse">
                   <Clock className="w-3.5 h-3.5 mr-1.5 text-sky-600 shrink-0" />

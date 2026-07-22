@@ -226,30 +226,34 @@ const Profile = () => {
     } catch (e) {}
 
     const activePayments = allPayments.filter(p => !['RECHAZADO', 'CANCELADO'].includes((p.estado || '').toString().toUpperCase()));
+    const progressedStates = ['APROBADA', 'EN_PROCESO', 'FINALIZADA', 'COMPLETADO', 'COMPLETADA', 'TERMINADA', 'ENTREGADA', 'LISTO'];
+    const completedFinancialStates = ['PAGADA', 'PAGADO', 'COMPLETADO', 'COMPLETADA', 'FINALIZADA', 'FINALIZADO', 'TERMINADA', 'TERMINADO', 'ENTREGADA', 'ENTREGADO', 'LISTO', 'CONFIRMADO', 'LIQUIDADO', 'TOTAL'];
 
     const isPaymentVerified = (pago, idx, activeList = activePayments) => {
       const pEstado = (pago.estado || '').toString().toUpperCase();
       if (['RECHAZADO', 'CANCELADO'].includes(pEstado)) return false;
       if (['VERIFICADO', 'APROBADO', 'COMPLETADO', 'PAGADO', 'CONFIRMADO', 'VALIDADO'].includes(pEstado)) return true;
-      if (estado === 'PAGADA' || estadoPago === 'COMPLETADO') return true;
+      if (completedFinancialStates.includes(estado) || completedFinancialStates.includes(estadoPago)) return true;
 
       const isLocal = String(pago.id_pago || pago.id || '').startsWith('local-') || pago.isLocalPending;
       if (isLocal) return false;
 
       const concepto = (pago.concepto || '').toLowerCase();
       const isRestanteConcept = concepto.includes('saldo') || concepto.includes('liquid') || concepto.includes('restante');
-      if (isRestanteConcept && estado !== 'PAGADA' && estadoPago !== 'COMPLETADO') return false;
+      if (isRestanteConcept && !completedFinancialStates.includes(estado) && !completedFinancialStates.includes(estadoPago)) return false;
 
-      if (activeList.length > 1 || ['APROBADA', 'EN_PROCESO'].includes(estado) || estadoPago === 'ADELANTO') {
+      if (activeList.length > 1 || progressedStates.includes(estado) || estadoPago === 'ADELANTO') {
         if (activeList.length > 1) {
-          const oldestPayment = activeList.reduce((oldest, current) => {
-            const idOld = parseFloat(oldest.id_pago || oldest.id || 999999999);
-            const idCur = parseFloat(current.id_pago || current.id || 999999999);
-            if (!isNaN(idOld) && !isNaN(idCur) && idOld !== 999999999 && idCur !== 999999999) {
+          const serverPayments = activeList.filter(p => !String(p.id_pago || p.id || '').startsWith('local-') && !p.isLocalPending);
+          const candidates = serverPayments.length > 0 ? serverPayments : activeList;
+          const oldestPayment = candidates.reduce((oldest, current) => {
+            const idOld = parseFloat(oldest.id_pago || oldest.id);
+            const idCur = parseFloat(current.id_pago || current.id);
+            if (!isNaN(idOld) && !isNaN(idCur)) {
               return idCur < idOld ? current : oldest;
             }
-            return activeList[activeList.length - 1];
-          }, activeList[0]);
+            return oldest;
+          }, candidates[0]);
 
           if (pago === oldestPayment || (pago.id_pago && String(pago.id_pago) === String(oldestPayment.id_pago))) {
             return true;
@@ -258,7 +262,7 @@ const Profile = () => {
           }
         }
 
-        if (['APROBADA', 'EN_PROCESO'].includes(estado) || estadoPago === 'ADELANTO') {
+        if (progressedStates.includes(estado) || estadoPago === 'ADELANTO') {
           return true;
         }
       }
@@ -270,11 +274,11 @@ const Profile = () => {
     const inReviewPayments = allPayments.filter((p, i) => !isPaymentVerified(p, i) && !['RECHAZADO', 'CANCELADO'].includes((p.estado || '').toString().toUpperCase()));
     const verifiedTotalPaid = Math.max(
       verifiedPayments.reduce((sum, p) => sum + parseFloat(p.monto_pagado || p.monto || 0), 0),
-      estado === 'PAGADA' || estadoPago === 'COMPLETADO' ? parseFloat(reqObj?.total_pagado || reqObj?.monto_pagado || reqObj?.totalPagado || 0) : 0
+      completedFinancialStates.includes(estado) || completedFinancialStates.includes(estadoPago) ? parseFloat(reqObj?.total_pagado || reqObj?.monto_pagado || reqObj?.totalPagado || 0) : 0
     );
 
     // 1. Pagado / Liquidado (aprobado por admin)
-    if (estado === 'PAGADA' || estadoPago === 'COMPLETADO' || (totalAmount > 0 && verifiedTotalPaid >= totalAmount - 0.01 && inReviewPayments.length === 0)) {
+    if (completedFinancialStates.includes(estado) || completedFinancialStates.includes(estadoPago) || (totalAmount > 0 && verifiedTotalPaid >= totalAmount - 0.01 && inReviewPayments.length === 0)) {
       return (
         <span className="inline-flex items-center bg-emerald-50 text-emerald-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-emerald-200 uppercase">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
@@ -283,8 +287,19 @@ const Profile = () => {
       );
     }
 
-    // 2. Liquidación en Revisión
-    if ((verifiedTotalPaid > 0.01 || ['APROBADA', 'EN_PROCESO'].includes(estado) || estadoPago === 'ADELANTO' || activePayments.length > 1) && inReviewPayments.length > 0) {
+    // 2. Pago en Revisión (100% abonado o enviado en un solo paso)
+    const totalInReviewOrActive = activePayments.reduce((sum, p) => sum + parseFloat(p.monto_pagado || p.monto || 0), 0);
+    if (inReviewPayments.length > 0 && verifiedTotalPaid <= 0.01 && totalAmount > 0 && (totalInReviewOrActive >= totalAmount - 0.01 || inReviewPayments.some(p => parseFloat(p.monto_pagado || p.monto || 0) >= totalAmount - 0.01)) && !progressedStates.includes(estado)) {
+      return (
+        <span className="inline-flex items-center bg-sky-50 text-sky-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-sky-200 uppercase">
+          <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mr-1.5 animate-pulse"></span>
+          Pago en Revisión
+        </span>
+      );
+    }
+
+    // 3. Liquidación en Revisión
+    if ((verifiedTotalPaid > 0.01 || progressedStates.includes(estado) || estadoPago === 'ADELANTO' || activePayments.length > 1) && inReviewPayments.length > 0) {
       return (
         <span className="inline-flex items-center bg-sky-50 text-sky-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-sky-200 uppercase">
           <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mr-1.5 animate-pulse"></span>
@@ -293,8 +308,8 @@ const Profile = () => {
       );
     }
 
-    // 3. Adelanto en Revisión
-    if (inReviewPayments.length > 0 && verifiedTotalPaid <= 0.01 && !['APROBADA', 'EN_PROCESO'].includes(estado) && estadoPago !== 'ADELANTO') {
+    // 4. Adelanto en Revisión
+    if (inReviewPayments.length > 0 && verifiedTotalPaid <= 0.01 && !progressedStates.includes(estado) && estadoPago !== 'ADELANTO') {
       return (
         <span className="inline-flex items-center bg-sky-50 text-sky-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-sky-200 uppercase">
           <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mr-1.5 animate-pulse"></span>
@@ -304,7 +319,7 @@ const Profile = () => {
     }
 
     // 4. Adelanto Confirmado / Aprobado
-    if (verifiedTotalPaid > 0.01 || ['APROBADA', 'EN_PROCESO'].includes(estado) || estadoPago === 'ADELANTO') {
+    if (verifiedTotalPaid > 0.01 || progressedStates.includes(estado) || estadoPago === 'ADELANTO') {
       return (
         <span className="inline-flex items-center bg-amber-50 text-amber-700 text-[10px] font-semibold px-2 py-0.5 rounded border border-amber-200 uppercase">
           <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5"></span>
