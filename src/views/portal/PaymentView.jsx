@@ -10,7 +10,8 @@ import {
   Upload,
   DollarSign,
   Hash,
-  Clock
+  Clock,
+  AlertTriangle // <-- AÑADIDO EL ÍCONO
 } from 'lucide-react';
 
 const PaymentView = () => {
@@ -217,6 +218,12 @@ const PaymentView = () => {
                   const isSaldoPendiente = st === 'APROBADA' || st === 'EN_PROCESO' || (item.status || '').toLowerCase() === 'aprobado' || (item.status || '').toLowerCase() === 'en curso';
                   const montoMitad = parseFloat(item.quotation.total) * 0.5;
 
+                  // LÓGICA AÑADIDA: Buscar si esta solicitud tiene algún pago rechazado en el historial global
+                  const itemPayments = paymentsHistory.filter(p => 
+                    String(p.solicitud?.id_solicitud || p.solicitud?.uuid_solicitud || p.id_solicitud || p.uuid_solicitud || '') === String(item.id || item.uuid_solicitud || '')
+                  );
+                  const hasRejected = itemPayments.some(p => (p.estado || '').toString().toUpperCase() === 'RECHAZADO');
+
                   const cardBorderColor = isCotizada ? 'border-amber-200/60' : 'border-indigo-200/60';
                   const headerBgColor = isCotizada ? 'bg-amber-50/50 border-amber-100' : 'bg-indigo-50/50 border-indigo-100';
                   const labelColor = isCotizada ? 'text-amber-600' : 'text-indigo-600';
@@ -234,6 +241,17 @@ const PaymentView = () => {
                            <span className="text-sm font-black text-rose-500 block mt-0.5">{formatCurrency(montoMitad)}</span>
                          </div>
                       </div>
+
+                      {/* LÓGICA AÑADIDA: Mensaje de alerta si el pago fue rechazado */}
+                      {hasRejected && (
+                        <div className="px-5 py-3 bg-rose-50 border-b border-rose-100 flex items-start gap-2 text-rose-700">
+                          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                          <p className="text-[11px] font-bold leading-relaxed">
+                            Hemos detectado un inconveniente con el último comprobante enviado y el pago fue rechazado. Por favor, vuelva a realizar la operación.
+                          </p>
+                        </div>
+                      )}
+
                       <div className="divide-y divide-slate-100">
                         {isCotizada && (
                           <div className="p-4 hover:bg-slate-50/50 transition-soft flex flex-col sm:flex-row sm:items-center justify-between gap-4">
